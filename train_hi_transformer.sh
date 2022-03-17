@@ -1,7 +1,7 @@
 #!/bin/bash
 #normal cpu stuff: allocate cpus, memory
 #SBATCH --ntasks=1 --cpus-per-task=16
-#SBATCH -p gpu --gres=gpu:a100:2 --mem=32GB
+#SBATCH -p gpu --gres=gpu:a100:1 --mem=16GB
 #SBATCH --time=60:00:00
 #SBATCH --output=hi-transformer-v1.txt
 #SBATCH --job-name=hi-transformer-v1
@@ -20,7 +20,7 @@ python language_modelling/run_mlm.py \
     --dataset_config_name en \
     --do_train 1 \
     --do_eval 1 \
-    --output_dir data/PLMs/models/hi-transformer-v1 \
+    --output_dir data/PLMs/hi-transformer-v1 \
     --evaluation_strategy epoch \
     --save_strategy epoch \
     --save_total_limit 5 \
@@ -36,5 +36,5 @@ python language_modelling/run_mlm.py \
     --weight_decay 0.01 \
     --adam_epsilon 1e-6 \
     --max_seq_length 8192 \
-    --max_train_samples 1024 \
-    --max_eval_samples 1024
+    --max_train_samples 64 \
+    --max_eval_samples 64

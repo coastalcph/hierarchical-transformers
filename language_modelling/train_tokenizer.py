@@ -85,8 +85,8 @@ def main():
     new_hi_transformer_tokenizer.save_pretrained(HI_TRANSFORMERV2_FOLDER)
 
     # re-load tokenizer and test
-    relaoded_tokenizer = AutoTokenizer.from_pretrained(CUSTOM_TOK_FOLDER)
-    tokens = relaoded_tokenizer.tokenize('dog ' * 5, add_special_tokens=False)
+    reloaded_tokenizer = AutoTokenizer.from_pretrained(CUSTOM_TOK_FOLDER)
+    tokens = reloaded_tokenizer.tokenize('dog ' * 5, add_special_tokens=False)
     print('Reloaded Tokenizer: ', tokens)
 
 
