@@ -13,8 +13,8 @@ The repository supports two variants of the `Hi-Transformer` architecture:
 
 So far, we testing the core implementations, you can play around with the following scripts:
 
-* `Hi-Transformer`: `/models/hi-transformervalidate_hi_transformer.py`
-* `Hi-Transformer (V2)`: `/models/hi-transformervalidate_hi_transformer_V2.py`
+* `Hi-Transformer`: `/models/hi-transformer/validate_hi_transformer.py`
+* `Hi-Transformer (V2)`: `/models/hi-transformer/validate_hi_transformer_V2.py`
 
 ### Requirements
 
