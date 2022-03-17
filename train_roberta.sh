@@ -1,9 +1,9 @@
 #!/bin/bash
 #normal cpu stuff: allocate cpus, memory
 #SBATCH --ntasks=1 --cpus-per-task=16
-#SBATCH -p gpu --gres=gpu:a100:2 --mem=32GB
+#SBATCH -p gpu --gres=gpu:titanrtx:2 --mem=32GB
 #SBATCH --time=60:00:00
-#SBATCH --output=roberta-v1
+#SBATCH --output=roberta-v1.txt
 #SBATCH --job-name=roberta-v1
 
 hostname
@@ -14,12 +14,10 @@ export PYTHONPATH=.
 BATCH_SIZE=64
 ACCUMULATION_STEPS=8
 
-python run_mlm.py \
+python language_modelling/run_mlm.py \
     --config_name data/roberta \
     --dataset_name multi_eurlex \
     --dataset_config_name en \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
     --do_train 1 \
     --do_eval 1 \
     --output_dir /models/legal-roberta \

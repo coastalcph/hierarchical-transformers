@@ -402,7 +402,9 @@ def main():
             )
     else:
         logger.info("Training new model from scratch")
-        if config.model_type == 'hi-transformer':
+        if config.model_type == 'hi-transformer-v2':
+            model = HiTransformerV2ForMaskedLM.from_config(config)
+        elif config.model_type == 'hi-transformer':
             model = HiTransformerForMaskedLM.from_config(config)
         else:
             model = AutoModelForMaskedLM.from_config(config)

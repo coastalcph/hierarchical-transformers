@@ -1,6 +1,6 @@
 """Tokenization classes for Hi-Transformer."""
 import torch
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, RobertaConfig
 from .configuration_hi_transformer_v2 import HiTransformerV2Config
 from transformers.utils import logging
 logger = logging.get_logger(__name__)

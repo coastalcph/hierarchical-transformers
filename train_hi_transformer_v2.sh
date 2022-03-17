@@ -1,10 +1,10 @@
 #!/bin/bash
 #normal cpu stuff: allocate cpus, memory
-#SBATCH --ntasks=1 --cpus-per-task=16
-#SBATCH -p gpu --gres=gpu:a100:2 --mem=32GB
+#SBATCH --ntasks=1 --cpus-per-task=8
+#SBATCH -p gpu --gres=gpu:titanrtx:2 --mem=16GB
 #SBATCH --time=60:00:00
-#SBATCH --output=hi-transformer-v1.txt
-#SBATCH --job-name=hi-transformer-v1
+#SBATCH --output=hi-transformer-v2.txt
+#SBATCH --job-name=hi-transformer-v2
 
 hostname
 nvidia-smi
@@ -12,15 +12,15 @@ echo $CUDA_VISIBLE_DEVICES
 export PYTHONPATH=.
 
 BATCH_SIZE=8
-ACCUMULATION_STEPS=8
+ACCUMULATION_STEPS=2
 
 python language_modelling/run_mlm.py \
-    --config_name data/hi-transformer \
+    --config_name data/hi-transformer-v2 \
     --dataset_name multi_eurlex \
     --dataset_config_name en \
     --do_train 1 \
     --do_eval 1 \
-    --output_dir /models/hi-transformer-v1 \
+    --output_dir /models/hi-transformer-v2 \
     --evaluation_strategy epoch \
     --save_strategy epoch \
     --save_total_limit 5 \
@@ -38,3 +38,4 @@ python language_modelling/run_mlm.py \
     --max_seq_length 8192 \
     --max_train_samples 1024 \
     --max_eval_samples 1024
+
