@@ -11,7 +11,7 @@ nvidia-smi
 echo $CUDA_VISIBLE_DEVICES
 export PYTHONPATH=.
 
-BATCH_SIZE=8
+BATCH_SIZE=2
 ACCUMULATION_STEPS=8
 
 python language_modelling/run_mlm.py \

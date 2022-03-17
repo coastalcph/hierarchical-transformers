@@ -30,7 +30,6 @@ from itertools import chain
 from typing import Optional
 
 import datasets
-import torch.nn
 from datasets import load_dataset, load_metric
 
 import transformers
@@ -172,14 +171,14 @@ class DataTrainingArguments:
         },
     )
     max_train_samples: Optional[int] = field(
-        default=16,
+        default=None,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of training examples to this "
             "value if set."
         },
     )
     max_eval_samples: Optional[int] = field(
-        default=16,
+        default=None,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
             "value if set."
@@ -536,16 +535,9 @@ def main():
             mask = labels != -100
             labels = labels[mask]
             preds = preds[mask]
-            logits = logits.reshape((-1, logits.shape[-1]))[mask]
-
-            # getting loss using cross entropy
-            loss_fct = torch.nn.CrossEntropyLoss()
-            loss = loss_fct(torch.tensor(logits), torch.tensor(labels))
-            # calculating perplexity
-            perplexity = torch.exp(loss)
             accuracy = metric.compute(predictions=preds, references=labels)
 
-            return {'accuracy': accuracy['accuracy'], 'perplexity': perplexity}
+            return {'accuracy': accuracy['accuracy']}
 
     # Data collator
     # This one will take care of randomly masking the tokens.

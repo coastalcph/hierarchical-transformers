@@ -246,7 +246,9 @@ class HiTransformerLayer(nn.Module):
         sentence_global_tokens = outputs[:, ::self.max_sentence_length]
         sentence_attention_mask = attention_mask[:, :, :, ::self.max_sentence_length]
 
-        sentence_global_tokens += self.position_embeddings(torch.arange(1, num_sentences+1))
+        sentence_positions = torch.arange(1, num_sentences + 1).repeat(sentence_global_tokens.size(0), 1).to(sentence_global_tokens.device) \
+                             * (sentence_attention_mask.reshape(-1, 64) != -1000).int().to(sentence_global_tokens.device)
+        sentence_global_tokens += self.position_embeddings(sentence_positions)
 
         document_outputs = self.document_encoder(sentence_global_tokens,
                                                  sentence_attention_mask,

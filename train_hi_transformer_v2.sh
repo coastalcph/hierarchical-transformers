@@ -1,7 +1,7 @@
 #!/bin/bash
 #normal cpu stuff: allocate cpus, memory
 #SBATCH --ntasks=1 --cpus-per-task=8
-#SBATCH -p gpu --gres=gpu:titanrtx:2 --mem=16GB
+#SBATCH -p gpu --gres=gpu:a100:1 --mem=16GB
 #SBATCH --time=60:00:00
 #SBATCH --output=hi-transformer-v2.txt
 #SBATCH --job-name=hi-transformer-v2
@@ -11,8 +11,8 @@ nvidia-smi
 echo $CUDA_VISIBLE_DEVICES
 export PYTHONPATH=.
 
-BATCH_SIZE=8
-ACCUMULATION_STEPS=2
+BATCH_SIZE=2
+ACCUMULATION_STEPS=4
 
 python language_modelling/run_mlm.py \
     --config_name data/hi-transformer-v2 \
@@ -36,6 +36,6 @@ python language_modelling/run_mlm.py \
     --weight_decay 0.01 \
     --adam_epsilon 1e-6 \
     --max_seq_length 8192 \
-    --max_train_samples 1024 \
-    --max_eval_samples 1024
+    --max_train_samples 64 \
+    --max_eval_samples 64
 
