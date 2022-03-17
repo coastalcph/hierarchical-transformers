@@ -20,7 +20,7 @@ python language_modelling/run_mlm.py \
     --dataset_config_name en \
     --do_train 1 \
     --do_eval 1 \
-    --output_dir /models/legal-roberta \
+    --output_dir data/PLMs/legal-roberta \
     --evaluation_strategy epoch \
     --save_strategy epoch \
     --save_total_limit 5 \

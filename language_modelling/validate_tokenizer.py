@@ -1,10 +1,10 @@
-from transformers import AutoTokenizer, RobertaConfig
+from transformers import AutoTokenizer
 from datasets import load_dataset
 
 ROBERTA_TOK_FOLDER = '../data/custom-tokenizer'
 
 dataset = load_dataset("wikitext", "wikitext-103-raw-v1", split='train')
-custom_roberta_tokenizer = AutoTokenizer.from_pretrained(ROBERTA_TOK_FOLDER, config=RobertaConfig.from_pretrained('roberta-base'))
+custom_roberta_tokenizer = AutoTokenizer.from_pretrained(ROBERTA_TOK_FOLDER)
 roberta_tokenizer = AutoTokenizer.from_pretrained('roberta-base')
 for example in dataset['text'][:100]:
     print(example)

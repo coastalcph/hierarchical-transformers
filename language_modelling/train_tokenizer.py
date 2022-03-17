@@ -1,10 +1,13 @@
 from tokenizers import models, normalizers, pre_tokenizers, decoders, processors, trainers
 from tokenizers import Tokenizer
 from datasets import load_dataset
-import os
+from transformers import PreTrainedTokenizerFast, AutoTokenizer
 import argparse
 
 CUSTOM_TOK_FOLDER = '../data/custom-tokenizer'
+HI_TRANSFORMER_FOLDER = '../data/hi-transformer'
+HI_TRANSFORMERV2_FOLDER = '../data/hi-transformer-v2'
+ROBERTA_FOLDER = '../data/roberta'
 
 
 def batch_iterator(dataset):
@@ -21,12 +24,12 @@ def main():
     config = parser.parse_args()
 
     # configure tokenizer
-    tokenizer = Tokenizer(models.BPE(unk_token="<unk>"))
-    tokenizer.normalizer = normalizers.Lowercase()
-    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=True)
-    tokenizer.decoder = decoders.ByteLevel()
-    tokenizer.post_processor = processors.RobertaProcessing(sep=("</s>", 2), cls=("<s>", 1),
-                                                            add_prefix_space=True, trim_offsets=True)
+    backend_tokenizer = Tokenizer(models.BPE(unk_token="<unk>"))
+    backend_tokenizer.normalizer = normalizers.Lowercase()
+    backend_tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=True)
+    backend_tokenizer.decoder = decoders.ByteLevel()
+    backend_tokenizer.post_processor = processors.RobertaProcessing(sep=("</s>", 2), cls=("<s>", 1),
+                                                                    add_prefix_space=True, trim_offsets=True)
 
     trainer = trainers.BpeTrainer(
         vocab_size=config.vocab_size,
@@ -39,11 +42,52 @@ def main():
     dataset = load_dataset("wikitext", "wikitext-103-raw-v1", split='train')
 
     # train tokenizer
-    tokenizer.train_from_iterator(trainer=trainer, iterator=batch_iterator(dataset))
+    backend_tokenizer.train_from_iterator(trainer=trainer, iterator=batch_iterator(dataset))
+
+    # test tokenizer
+    tokens = backend_tokenizer.encode('dog ' * 5, add_special_tokens=False)
+    print('Original Tokenizer: ', tokens.tokens)
 
     # save tokenizer
-    tokenizer.save(os.path.join(CUSTOM_TOK_FOLDER, 'tokenizer.json'), pretty=True)
-    tokenizer.model.save(CUSTOM_TOK_FOLDER)
+    new_roberta_tokenizer = PreTrainedTokenizerFast(
+        tokenizer_object=backend_tokenizer,
+        model_max_length=512,
+        # padding_side="Set me if you want",
+        # truncation_side="Set me if you want",
+        # model_input_names="Set me if you want",
+        bos_token='<s>',
+        eos_token='</s>',
+        unk_token='<unk>',
+        sep_token='</s>',
+        pad_token='<pad>',
+        cls_token='<s>',
+        mask_token='<mask>',
+    )
+
+    new_hi_transformer_tokenizer = PreTrainedTokenizerFast(
+        tokenizer_object=backend_tokenizer,
+        model_max_length=8192,
+        # padding_side="Set me if you want",
+        # truncation_side="Set me if you want",
+        # model_input_names="Set me if you want",
+        bos_token='<s>',
+        eos_token='</s>',
+        unk_token='<unk>',
+        sep_token='</s>',
+        pad_token='<pad>',
+        cls_token='<s>',
+        mask_token='<mask>',
+    )
+
+    new_roberta_tokenizer.save_pretrained(CUSTOM_TOK_FOLDER)
+    new_roberta_tokenizer.save_pretrained(ROBERTA_FOLDER)
+    new_hi_transformer_tokenizer.save_pretrained(HI_TRANSFORMER_FOLDER)
+    new_hi_transformer_tokenizer.save_pretrained(HI_TRANSFORMERV2_FOLDER)
+
+    # re-load tokenizer and test
+    relaoded_tokenizer = AutoTokenizer.from_pretrained(CUSTOM_TOK_FOLDER)
+    tokens = relaoded_tokenizer.tokenize('dog ' * 5, add_special_tokens=False)
+    print('Reloaded Tokenizer: ', tokens)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 """Tokenization classes for Hi-Transformer."""
 import torch
-from transformers import AutoTokenizer, RobertaConfig
+from transformers import AutoTokenizer
 from .configuration_hi_transformer_v2 import HiTransformerV2Config
 from transformers.utils import logging
 logger = logging.get_logger(__name__)
@@ -11,7 +11,6 @@ class HiTransformerV2Tokenizer:
         self._tokenizer = tokenizer
         self.config = HiTransformerV2Config.from_pretrained(self._tokenizer.name_or_path)
         self._tokenizer.model_max_length = self.model_max_length
-        self._tokenizer.backend_tokenizer.pre_tokenizer.add_prefix_space = True
         self.type2id = {'input_ids': (self._tokenizer.cls_token_id, self._tokenizer.pad_token_id),
                         'token_type_ids': (0, 0),
                         'attention_mask': (1, 0),
@@ -56,11 +55,7 @@ class HiTransformerV2Tokenizer:
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        if 'config' in kwargs:
-            kwargs.pop('config')
-        return cls(tokenizer=AutoTokenizer.from_pretrained(pretrained_model_name_or_path,
-                                                           config=RobertaConfig.from_pretrained('roberta-base'),
-                                                           **kwargs))
+        return cls(tokenizer=AutoTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs))
 
     def save_pretrained(self, *args, **kwargs):
         return self._tokenizer.save_pretrained( *args, **kwargs)

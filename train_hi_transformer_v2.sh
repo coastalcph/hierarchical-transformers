@@ -20,7 +20,7 @@ python language_modelling/run_mlm.py \
     --dataset_config_name en \
     --do_train 1 \
     --do_eval 1 \
-    --output_dir /models/hi-transformer-v2 \
+    --output_dir data/PLMs/hi-transformer-v2 \
     --evaluation_strategy epoch \
     --save_strategy epoch \
     --save_total_limit 5 \
