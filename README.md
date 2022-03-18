@@ -34,6 +34,9 @@ You can also try to train a new LM based on either `Hi-Transformer` variants:
 * `Hi-Transformer`: `train_hi_transformer.sh`
 * `Hi-Transformer (V2)`: `train_hi_transformer_v2.sh`
 
+
+Try on Google Colab: https://colab.research.google.com/drive/15feh49wqBshgkcvbO6QypvJoa3dG6P5S?usp=sharing
+
 ### I still have open questions...
 
 Please post your question on [Discussions](https://github.com/coastalcph/hi-transformers/discussions) section or communicate with the corresponding author via e-mail.

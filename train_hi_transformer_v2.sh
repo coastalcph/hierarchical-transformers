@@ -21,6 +21,7 @@ python language_modelling/run_mlm.py \
     --do_train 1 \
     --do_eval 1 \
     --output_dir data/PLMs/hi-transformer-v2 \
+    --overwrite_output_dir 1 \
     --evaluation_strategy epoch \
     --save_strategy epoch \
     --save_total_limit 5 \
