@@ -1,3 +1,3 @@
-from .modelling_hi_transformer_v2 import HiTransformerV2ForMaskedLM
+from .modelling_hi_transformer_v2 import HiTransformerV2ForMaskedLM, HiTransformerV2ForSequenceClassification
 from .tokenization_hi_transformer_v2 import HiTransformerV2Tokenizer
 from .configuration_hi_transformer_v2 import HiTransformerV2Config

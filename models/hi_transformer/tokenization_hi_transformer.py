@@ -32,6 +32,10 @@ class HiTransformerTokenizer:
     def pad_token_id(self):
         return self._tokenizer.pad_token_id
 
+    @property
+    def vocab(self):
+        return self._tokenizer.vocab
+
     def __len__(self):
         """
         Size of the full vocabulary with the added tokens.
@@ -43,6 +47,12 @@ class HiTransformerTokenizer:
 
     def convert_tokens_to_ids(self, *args, **kwargs):
         return self._tokenizer.convert_tokens_to_ids(*args, **kwargs)
+
+    def batch_decode(self, *args, **kwargs):
+        return self._tokenizer.batch_decode(*args, **kwargs)
+
+    def tokenize(self, text, **kwargs):
+        return self._tokenizer.tokenize(text, **kwargs)
 
     def encode(self, text, **kwargs):
         input_ids = self._tokenizer.encode_plus(text, add_special_tokens=False, **kwargs)

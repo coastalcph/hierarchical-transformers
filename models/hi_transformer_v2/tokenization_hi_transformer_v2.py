@@ -44,6 +44,9 @@ class HiTransformerV2Tokenizer:
     def convert_tokens_to_ids(self, *args, **kwargs):
         return self._tokenizer.convert_tokens_to_ids(*args, **kwargs)
 
+    def batch_decode(self, *args, **kwargs):
+        return self._tokenizer.batch_decode(*args, **kwargs)
+
     def encode(self, text, **kwargs):
         input_ids = self._tokenizer.encode_plus(text, add_special_tokens=False, **kwargs)
         input_ids = self.chunks(input_ids[: self.model_max_length - self.config.max_sentences],

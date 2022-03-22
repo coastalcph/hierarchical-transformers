@@ -21,7 +21,7 @@ from packaging import version
 from dataclasses import dataclass
 from typing import Optional, Tuple
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss, KLDivLoss
 
 from transformers.file_utils import (
     add_code_sample_docstrings,
@@ -117,6 +117,72 @@ class BaseModelOutputWithSentenceAttentions(ModelOutput):
     sentence_attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
+@dataclass
+class SequenceRepresentationOutput(ModelOutput):
+    """
+    Base class for outputs of document representation models.
+
+    Args:
+        loss (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when `labels` is provided):
+            Classification (or regression if config.num_labels==1) loss.
+        representations (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
+            Latent representations.
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer) of
+            shape `(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+    """
+
+    loss: Optional[torch.FloatTensor] = None
+    representations: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+
+@dataclass
+class HiTransformerForPreTrainingOutput(ModelOutput):
+    """
+    Output type of [`HiTransformerForPreTraining`].
+
+    Args:
+        loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+            Total loss as the sum of the masked language modeling loss and the next sequence prediction
+            (classification) loss.
+        prediction_logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
+            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
+        document_representations (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
+            Document latent representations.
+        sentence_representations (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
+            Sentence latent representations.
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer) of
+            shape `(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+    """
+
+    loss: Optional[torch.FloatTensor] = None
+    prediction_logits: torch.FloatTensor = None
+    document_representations: torch.FloatTensor = None
+    sentence_representations: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+
+
 class HiTransformerEmbeddings(nn.Module):
     """
     Same as BertEmbeddings with a tiny tweak for positional embeddings indexing.
@@ -127,7 +193,7 @@ class HiTransformerEmbeddings(nn.Module):
         super().__init__()
         self.padding_idx = config.pad_token_id
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=self.padding_idx)
-        self.position_embeddings = nn.Embedding(config.max_position_embeddings + 1, config.hidden_size, padding_idx=self.padding_idx)
+        self.position_embeddings = nn.Embedding(config.max_sentence_length + self.padding_idx + 1, config.hidden_size, padding_idx=self.padding_idx)
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
 
         # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
@@ -247,7 +313,7 @@ class HiTransformerLayer(nn.Module):
         sentence_attention_mask = attention_mask[:, :, :, ::self.max_sentence_length]
 
         sentence_positions = torch.arange(1, num_sentences + 1).repeat(sentence_global_tokens.size(0), 1).to(sentence_global_tokens.device) \
-                             * (sentence_attention_mask.reshape(-1, 64) != -1000).int().to(sentence_global_tokens.device)
+                             * (sentence_attention_mask.reshape(-1, num_sentences) >= -100).int().to(sentence_global_tokens.device)
         sentence_global_tokens += self.position_embeddings(sentence_positions)
 
         document_outputs = self.document_encoder(sentence_global_tokens,
@@ -514,11 +580,24 @@ class HiTransformerPooler(nn.Module):
         if self.pooling == 'attentive':
             pooled_output = self.attentive_pooling(sentence_repr_hidden_states)
         else:
-            pooled_output = torch.max(sentence_repr_hidden_states)[0]
+            pooled_output = torch.max(sentence_repr_hidden_states, dim=1)[0]
         pooled_output = self.dense(pooled_output)
         pooled_output = self.activation(pooled_output)
         return pooled_output
 
+
+class HiTransformerSentencizer(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.activation = nn.Tanh()
+        self.max_sentence_length = config.max_sentence_length
+
+    def forward(self, hidden_states):
+        sentence_repr_hidden_states = hidden_states[:, ::self.max_sentence_length]
+        sentence_outputs = self.dense(sentence_repr_hidden_states)
+        sentence_outputs = self.activation(sentence_outputs)
+        return sentence_outputs
 
 @add_start_docstrings(
     "The bare Hi-Transformer Model transformer outputting raw hidden-states without any specific head on top.",
@@ -789,6 +868,252 @@ class HiTransformerForMaskedLM(HiTransformerPreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+
+
+class HiTransformerModelForDocumentRepresentation(HiTransformerPreTrainedModel):
+    _keys_to_ignore_on_load_missing = [r"position_ids"]
+
+    def __init__(self, config, pooling='max'):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+        self.config = config
+
+        self.hi_transformer = HiTransformerModel(config)
+        self.pooler = HiTransformerPooler(config, pooling=pooling)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_code_sample_docstrings(
+        processor_class=_TOKENIZER_FOR_DOC,
+        checkpoint=_CHECKPOINT_FOR_DOC,
+        output_type=SequenceClassifierOutput,
+        config_class=_CONFIG_FOR_DOC,
+    )
+    def forward(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+    ):
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
+            config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
+            `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
+        """
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = self.hi_transformer(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+        sequence_output = outputs[0]
+        pooled_outputs = self.pooler(sequence_output)
+
+        drp_loss = None
+        if labels is not None:
+            loss_fct = KLDivLoss()
+            drp_loss = loss_fct(pooled_outputs, labels)
+
+        if not return_dict:
+            output = (pooled_outputs,) + outputs[2:]
+            return ((drp_loss,) + output) if drp_loss is not None else output
+
+        return SequenceRepresentationOutput(
+            loss=drp_loss,
+            representations=pooled_outputs,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+
+
+@add_start_docstrings(""" Hi-Transformer Model transformer for masked sentence representation prediction """,
+    HITRANSFORMER_START_DOCSTRING,
+)
+class HiTransformerModelForMaskedSentenceRepresentation(HiTransformerPreTrainedModel):
+    _keys_to_ignore_on_load_missing = [r"position_ids"]
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+        self.config = config
+
+        self.hi_transformer = HiTransformerModel(config)
+        self.sentencizer = HiTransformerSentencizer(config)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_code_sample_docstrings(
+        processor_class=_TOKENIZER_FOR_DOC,
+        checkpoint=_CHECKPOINT_FOR_DOC,
+        output_type=SequenceClassifierOutput,
+        config_class=_CONFIG_FOR_DOC,
+    )
+    def forward(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        labels=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+    ):
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
+            config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
+            `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
+        """
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = self.hi_transformer(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+        sequence_output = outputs[0]
+        sentence_outputs = self.sentencizer(sequence_output)
+
+        srp_loss = None
+        if labels is not None:
+            loss_fct = KLDivLoss()
+            srp_loss = loss_fct(sentence_outputs, labels)
+
+        if not return_dict:
+            output = (sentence_outputs,) + outputs[2:]
+            return ((srp_loss,) + output) if srp_loss is not None else output
+
+        return SequenceRepresentationOutput(
+            loss=srp_loss,
+            representations=sentence_outputs,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+
+
+@add_start_docstrings(
+    """
+    Hi-Transformer Model with three heads on top as done during the pretraining: a `masked language modeling` head and a `document
+    representation prediction ` head and a `masked sentence representation prediction ` head.
+    """,
+    HITRANSFORMER_START_DOCSTRING,
+)
+class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
+    def __init__(self, config):
+        super().__init__(config)
+
+        self.hi_transformer = HiTransformerModel(config)
+        self.lm_head = HiTransformerLMHead(config, sampled_decoding=False)
+        self.pooler = HiTransformerPooler(config, pooling='max')
+        self.sentencizer = HiTransformerSentencizer(config)
+        self.document_cls = nn.Linear(config.hidden_size, config.hidden_size)
+        self.sentence_cls = nn.Linear(config.hidden_size, config.hidden_size)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    def forward(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        inputs_embeds=None,
+        labels=None,
+        document_labels=None,
+        sentence_labels=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+    ):
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = self.hi_transformer(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        # MLM
+        sequence_output = outputs[0]
+        prediction_scores = self.lm_head(sequence_output, labels)
+
+        # DRP
+        pooled_outputs = self.pooler(sequence_output)
+        doc_representations = self.document_cls(pooled_outputs)
+
+        # MRP
+        sentence_outputs = self.sentencizer(sequence_output)
+        sent_representations = self.sentence_cls(sentence_outputs)
+
+        total_loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+            total_loss = masked_lm_loss
+
+        if document_labels is not None:
+            loss_fct = KLDivLoss(reduction="batchmean")
+            drp_loss = loss_fct(doc_representations, document_labels)
+            if labels is not None:
+                total_loss += drp_loss
+            else:
+                total_loss = drp_loss
+
+        if sentence_labels is not None:
+            loss_fct = KLDivLoss(reduction="batchmean")
+            srp_loss = loss_fct(sent_representations, sentence_labels.view(-1))
+            if labels is not None or document_labels is not None:
+                total_loss += srp_loss
+            else:
+                total_loss = srp_loss
+
+        if not return_dict:
+            output = (prediction_scores,) + outputs[2:]
+            return ((total_loss,) + output) if total_loss is not None else output
+
+        return HiTransformerForPreTrainingOutput(
+            loss=total_loss,
+            prediction_logits=prediction_scores,
+            document_representations=doc_representations,
+            sentence_representations=torch.zeros(1).float(),
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+
 
 
 @add_start_docstrings(
@@ -1180,4 +1505,4 @@ def create_position_ids_from_input_ids(input_ids, padding_idx, position_ids):
     """
     # The series of casts and type-conversions here are carefully balanced to both work with ONNX export and XLA.
     mask = input_ids.ne(padding_idx).int()
-    return position_ids.repeat(input_ids.size(0), 1) * mask
+    return position_ids[:, :input_ids.size(1)].repeat(input_ids.size(0), 1) * mask

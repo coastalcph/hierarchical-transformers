@@ -37,9 +37,7 @@ from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoConfig,
-    AutoModelForMaskedLM,
     AutoTokenizer,
-    DataCollatorForLanguageModeling,
     HfArgumentParser,
     Trainer,
     TrainingArguments,
@@ -48,9 +46,10 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
-from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerTokenizer, HiTransformerConfig
+from language_modelling.data_collator_pre_training import DataCollatorForPreTraining
+from language_modelling.text_featurization import train_text_featurizer
+from models.hi_transformer import HiTransformerModelForPreTraining, HiTransformerTokenizer, HiTransformerConfig
 from models.hi_transformer_v2 import HiTransformerV2ForMaskedLM, HiTransformerV2Tokenizer, HiTransformerV2Config
-
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.15.0")
@@ -182,6 +181,24 @@ class DataTrainingArguments:
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
             "value if set."
+        },
+    )
+    masked_language_modelling: Optional[int] = field(
+        default=True,
+        metadata={
+            "help": "Whether to add masked language modelling in pre-training objectives"
+        },
+    )
+    document_representation_prediction: Optional[int] = field(
+        default=True,
+        metadata={
+            "help": "Whether to add document representation prediction in pre-training objectives"
+        },
+    )
+    masked_sentence_representation_prediction: Optional[int] = field(
+        default=True,
+        metadata={
+            "help": "Whether to add masked sentence representation prediction in pre-training objectives"
         },
     )
 
@@ -382,7 +399,7 @@ def main():
                 use_auth_token=True if model_args.use_auth_token else None,
             )
         elif config.model_type == 'hi-transformer':
-            model = HiTransformerForMaskedLM.from_pretrained(
+            model = HiTransformerModelForPreTraining.from_pretrained(
                 model_args.model_name_or_path,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
@@ -391,22 +408,15 @@ def main():
                 use_auth_token=True if model_args.use_auth_token else None,
             )
         else:
-            model = AutoModelForMaskedLM.from_pretrained(
-                model_args.model_name_or_path,
-                from_tf=bool(".ckpt" in model_args.model_name_or_path),
-                config=config,
-                cache_dir=model_args.cache_dir,
-                revision=model_args.model_revision,
-                use_auth_token=True if model_args.use_auth_token else None,
-            )
+            raise NotImplementedError('Multi-objective pre-training is not supported for other models')
     else:
         logger.info("Training new model from scratch")
         if config.model_type == 'hi-transformer-v2':
             model = HiTransformerV2ForMaskedLM.from_config(config)
         elif config.model_type == 'hi-transformer':
-            model = HiTransformerForMaskedLM.from_config(config)
+            model = HiTransformerModelForPreTraining.from_config(config)
         else:
-            model = AutoModelForMaskedLM.from_config(config)
+            raise NotImplementedError('Multi-objective pre-training is not supported for other models')
 
     model.resize_token_embeddings(len(tokenizer))
 
@@ -539,12 +549,19 @@ def main():
 
             return {'accuracy': accuracy['accuracy']}
 
+    if data_args.document_representation_prediction or data_args.masked_sentence_representation_prediction:
+        tfidf_vect, pca_solver = train_text_featurizer(tokenizer=tokenizer, documents=raw_datasets['train']['text'][:1000],
+                                                       hidden_units=config.hidden_size)
+
     # Data collator
-    # This one will take care of randomly masking the tokens.
-    data_collator = DataCollatorForLanguageModeling(
+    # This one will take care of pre-training labels.
+    data_collator = DataCollatorForPreTraining(
         tokenizer=tokenizer,
         mlm_probability=data_args.mlm_probability,
-        pad_to_multiple_of=config.model_max_length,
+        pad_to_multiple_of=config.max_sentence_length,
+        max_sentence_length=config.max_sentence_length,
+        tfidf_vect=tfidf_vect,
+        pca_solver=pca_solver
     )
 
     # Initialize our Trainer

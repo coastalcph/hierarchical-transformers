@@ -52,8 +52,8 @@ class HiTransformerV2Config(PretrainedConfig):
             The maximum sentence length that this model might ever be used with.
         model_max_length (:obj:`int`, `optional`, defaults to 8192):
             The maximum  sequence length (max_sentences * max_sentence_size) that this model might ever be used with
-        document_contextualization_factor (:obj:`int`, `optional`, defaults to 4):
-            The factor for skipping document transformer layers.
+        encoder_layout (:obj:`Dict`):
+            The sentence/document encoder layout.
         hidden_size (:obj:`int`, `optional`, defaults to 768):
             Dimensionality of the encoder layers and the pooler layer.
         num_hidden_layers (:obj:`int`, `optional`, defaults to 12):
@@ -101,7 +101,6 @@ class HiTransformerV2Config(PretrainedConfig):
         max_sentences=64,
         max_sentence_size=128,
         model_max_length=8192,
-        document_contextualization_factor=4,
         num_hidden_layers=12,
         num_attention_heads=12,
         intermediate_size=3072,
@@ -114,6 +113,7 @@ class HiTransformerV2Config(PretrainedConfig):
         layer_norm_eps=1e-12,
         pad_token_id=0,
         position_embedding_type="absolute",
+        encoder_layout=None,
         use_cache=True,
         classifier_dropout=None,
         **kwargs
@@ -125,7 +125,7 @@ class HiTransformerV2Config(PretrainedConfig):
         self.max_sentences = max_sentences
         self.max_sentence_size = max_sentence_size
         self.model_max_length = model_max_length
-        self.document_contextualization_factor = document_contextualization_factor
+        self.encoder_layout = encoder_layout
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
         self.hidden_act = hidden_act

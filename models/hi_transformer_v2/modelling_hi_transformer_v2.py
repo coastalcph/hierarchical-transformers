@@ -56,13 +56,15 @@ HITRANSFORMERV2_PRETRAINED_MODEL_ARCHIVE_LIST = [
 
 
 class HiTransformerV2Layer(nn.Module):
-    def __init__(self, config, use_document_encoder=True):
+    def __init__(self, config, use_document_encoder=True, use_sentence_encoder=True):
         super().__init__()
-        self.sentence_encoder = TransformerLayer(config)
         self.max_sentence_length = config.max_sentence_length
         self.max_sentences = config.max_sentences
         self.hidden_size = config.hidden_size
         self.use_document_encoder = use_document_encoder
+        self.use_sentence_encoder = use_sentence_encoder
+        if self.use_sentence_encoder:
+            self.sentence_encoder = TransformerLayer(config)
         if self.use_document_encoder:
             self.document_encoder = TransformerLayer(config)
             self.position_embeddings = nn.Embedding(config.max_sentences+1, config.hidden_size,
@@ -76,22 +78,25 @@ class HiTransformerV2Layer(nn.Module):
         output_attentions=False,
     ):
 
-        # transform sequences to sentences
-        sentence_inputs = transform_tokens2sentences(hidden_states,
-                                                     num_sentences=num_sentences,
-                                                     max_sentence_length=self.max_sentence_length)
-        sentence_masks = transform_masks2sentences(attention_mask,
-                                                   num_sentences=num_sentences,
-                                                   max_sentence_length=self.max_sentence_length)
+        if self.use_sentence_encoder:
+            # transform sequences to sentences
+            sentence_inputs = transform_tokens2sentences(hidden_states,
+                                                         num_sentences=num_sentences,
+                                                         max_sentence_length=self.max_sentence_length)
+            sentence_masks = transform_masks2sentences(attention_mask,
+                                                       num_sentences=num_sentences,
+                                                       max_sentence_length=self.max_sentence_length)
 
-        sentence_outputs = self.sentence_encoder(sentence_inputs,
-                                                 sentence_masks,
-                                                 output_attentions=output_attentions)
+            sentence_outputs = self.sentence_encoder(sentence_inputs,
+                                                     sentence_masks,
+                                                     output_attentions=output_attentions)
 
-        # transform sentences to tokens
-        outputs = transform_sentences2tokens(sentence_outputs[0],
-                                             num_sentences=num_sentences,
-                                             max_sentence_length=self.max_sentence_length)
+            # transform sentences to tokens
+            outputs = transform_sentences2tokens(sentence_outputs[0],
+                                                 num_sentences=num_sentences,
+                                                 max_sentence_length=self.max_sentence_length)
+        else:
+            outputs = hidden_states
 
         document_outputs = (None, None)
         if self.use_document_encoder:
@@ -100,7 +105,7 @@ class HiTransformerV2Layer(nn.Module):
             sentence_attention_mask = attention_mask[:, :, :, ::self.max_sentence_length]
 
             sentence_positions = torch.arange(1, num_sentences+1).repeat(sentence_global_tokens.size(0), 1).to(sentence_global_tokens.device) \
-                                 * (sentence_attention_mask.reshape(-1, 64) != -1000).int().to(sentence_global_tokens.device)
+                                 * (sentence_attention_mask.reshape(-1, num_sentences) >= -100).int().to(sentence_global_tokens.device)
             sentence_global_tokens += self.position_embeddings(sentence_positions)
 
             document_outputs = self.document_encoder(sentence_global_tokens,
@@ -121,7 +126,8 @@ class HiTransformerV2Encoder(nn.Module):
         super().__init__()
         self.config = config
         self.layer = nn.ModuleList([HiTransformerV2Layer(config,
-                                                         use_document_encoder=not (idx+1) % self.config.document_contextualization_factor)
+                                                         use_sentence_encoder=self.config.encoder_layout[str(idx)]['sentence_encoder'],
+                                                         use_document_encoder=self.config.encoder_layout[str(idx)]['document_encoder'])
                                     for idx in range(config.num_hidden_layers)])
         self.gradient_checkpointing = False
 
