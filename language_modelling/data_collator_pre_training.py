@@ -79,8 +79,6 @@ class DataCollatorForPreTraining(DataCollatorMixin):
 
     def torch_call(self, examples: List[Union[List[int], Any, Dict[str, Any]]]) -> Dict[str, Any]:
 
-        for example in examples:
-            example.pop("labels", None)
         # Handle dict or lists with proper padding and conversion to tensor.
         if isinstance(examples[0], (dict, BatchEncoding)):
             batch = self.tokenizer.pad(examples, return_tensors="pt", pad_to_multiple_of=self.pad_to_multiple_of)
@@ -98,7 +96,7 @@ class DataCollatorForPreTraining(DataCollatorMixin):
             )
         if self.drp:
             batch["document_labels"] = self.torch_doc_reprs(original_inputs)
-        if self.drp:
+        if self.srp:
             batch["sentence_labels"] = self.torch_sentence_reprs(original_inputs)
         return batch
 

@@ -49,7 +49,6 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerTokenizer, HiTransformerConfig
-from models.hi_transformer_v2 import HiTransformerV2ForMaskedLM, HiTransformerV2Tokenizer, HiTransformerV2Config
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -168,6 +167,13 @@ class DataTrainingArguments:
         metadata={
             "help": "Whether to pad all samples to `max_seq_length`. "
             "If False, will pad the samples dynamically when batching to the maximum length in the batch."
+        },
+    )
+    greedy_chunking: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to chunk input sequences greedily. "
+            "If False, tokenizer will use sentence splitting, otherwise fixed chunking."
         },
     )
     max_train_samples: Optional[int] = field(
@@ -306,6 +312,9 @@ def main():
                 cache_dir=model_args.cache_dir,
             )
 
+    raw_datasets['train'] = raw_datasets['train'].remove_columns([column for column in raw_datasets.column_names['train'] if column != 'text'])
+    raw_datasets['validation'] = raw_datasets['validation'].remove_columns([column for column in raw_datasets.column_names['validation'] if column !='text'])
+
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
@@ -319,12 +328,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    if 'hi-transformer-v2' in model_args.config_name:
-        if model_args.config_name:
-            config = HiTransformerV2Config.from_pretrained(model_args.config_name, **config_kwargs)
-        elif model_args.model_name_or_path:
-            config = HiTransformerV2Config.from_pretrained(model_args.model_name_or_path, **config_kwargs)
-    elif 'hi-transformer' in model_args.config_name:
+    if 'hi-transformer' in model_args.config_name:
         if model_args.config_name:
             config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
         elif model_args.model_name_or_path:
@@ -347,14 +351,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    if config.model_type == 'hi-transformer-v2':
-        if model_args.tokenizer_name:
-            tokenizer = HiTransformerV2Tokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
-        elif model_args.model_name_or_path:
-            tokenizer = HiTransformerV2Tokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
-        elif model_args.config_name:
-            tokenizer = HiTransformerV2Tokenizer.from_pretrained(model_args.config_name, **tokenizer_kwargs)
-    elif config.model_type == 'hi-transformer':
+    if config.model_type == 'hi-transformer':
         if model_args.tokenizer_name:
             tokenizer = HiTransformerTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
         elif model_args.model_name_or_path:
@@ -372,16 +369,7 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        if config.model_type == 'hi-transformer-v2':
-            model = HiTransformerV2ForMaskedLM.from_pretrained(
-                model_args.model_name_or_path,
-                from_tf=bool(".ckpt" in model_args.model_name_or_path),
-                config=config,
-                cache_dir=model_args.cache_dir,
-                revision=model_args.model_revision,
-                use_auth_token=True if model_args.use_auth_token else None,
-            )
-        elif config.model_type == 'hi-transformer':
+        if config.model_type == 'hi-transformer':
             model = HiTransformerForMaskedLM.from_pretrained(
                 model_args.model_name_or_path,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -401,9 +389,7 @@ def main():
             )
     else:
         logger.info("Training new model from scratch")
-        if config.model_type == 'hi-transformer-v2':
-            model = HiTransformerV2ForMaskedLM.from_config(config)
-        elif config.model_type == 'hi-transformer':
+        if config.model_type == 'hi-transformer':
             model = HiTransformerForMaskedLM.from_config(config)
         else:
             model = AutoModelForMaskedLM.from_config(config)
@@ -448,6 +434,7 @@ def main():
                 padding=padding,
                 truncation=True,
                 max_length=max_seq_length,
+                greedy_chunking=data_args.greedy_chunking,
                 # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
                 # receives the `special_tokens_mask`.
                 return_special_tokens_mask=True,
@@ -467,7 +454,9 @@ def main():
         # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
         # efficient when it receives the `special_tokens_mask`.
         def tokenize_function(examples):
-            return tokenizer(examples[text_column_name], return_special_tokens_mask=True)
+            return tokenizer(examples[text_column_name],
+                             greedy_chunking=data_args.greedy_chunking,
+                             return_special_tokens_mask=True)
 
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(

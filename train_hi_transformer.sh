@@ -3,8 +3,8 @@
 #SBATCH --ntasks=1 --cpus-per-task=16
 #SBATCH -p gpu --gres=gpu:a100:1 --mem=16GB
 #SBATCH --time=60:00:00
-#SBATCH --output=hi-transformer-v1.txt
-#SBATCH --job-name=hi-transformer-v1
+#SBATCH --output=hi-transformer.txt
+#SBATCH --job-name=hi-transformer
 
 hostname
 nvidia-smi
@@ -14,13 +14,16 @@ export PYTHONPATH=.
 BATCH_SIZE=2
 ACCUMULATION_STEPS=8
 
-python language_modelling/run_mlm.py \
+python language_modelling/run_pretraining.py \
     --config_name data/hi-transformer \
     --dataset_name multi_eurlex \
     --dataset_config_name en \
+    --masked_language_modelling 1 \
+    --document_representation_prediction 1 \
+    --masked_sentence_representation_prediction 1 \
     --do_train 1 \
     --do_eval 1 \
-    --output_dir data/PLMs/hi-transformer-v1 \
+    --output_dir data/PLMs/hi-transformer-mlm \
     --overwrite_output_dir 1 \
     --evaluation_strategy epoch \
     --save_strategy epoch \

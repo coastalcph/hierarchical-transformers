@@ -1,11 +1,11 @@
 from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerTokenizer, HiTransformerConfig
+from datasets import load_dataset
 
-DUMMY_TEXTS = ['dog ' * 8192, 'cat ' * 7000, 'mouse ' * 5000]
+DUMMY_TEXTS = load_dataset('multi_eurlex', 'en', split='test')['text'][:64]
 
-config = HiTransformerConfig.from_pretrained('../../data/hi-transformer')
-tokenizer = HiTransformerTokenizer.from_pretrained('../../data/hi-transformer')
+config = HiTransformerConfig.from_pretrained('../../data/hi-transformer-v2')
+tokenizer = HiTransformerTokenizer.from_pretrained('../../data/hi-transformer-v2')
 model = HiTransformerForMaskedLM.from_config(config)
 pytorch_total_params = sum(p.numel() for p in model.hi_transformer.parameters())
-batch = tokenizer(DUMMY_TEXTS, padding=True, truncation=True, return_tensors='pt')
+batch = tokenizer(DUMMY_TEXTS, padding=True, truncation=True, return_tensors='pt', greedy_chunking=False)
 outputs = model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'])
-print()

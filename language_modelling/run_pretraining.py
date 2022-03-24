@@ -49,7 +49,6 @@ from transformers.utils.versions import require_version
 from language_modelling.data_collator_pre_training import DataCollatorForPreTraining
 from language_modelling.text_featurization import train_text_featurizer
 from models.hi_transformer import HiTransformerModelForPreTraining, HiTransformerTokenizer, HiTransformerConfig
-from models.hi_transformer_v2 import HiTransformerV2ForMaskedLM, HiTransformerV2Tokenizer, HiTransformerV2Config
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.15.0")
@@ -323,6 +322,9 @@ def main():
                 cache_dir=model_args.cache_dir,
             )
 
+    raw_datasets['train'] = raw_datasets['train'].remove_columns([column for column in raw_datasets.column_names['train'] if column != 'text'])
+    raw_datasets['validation'] = raw_datasets['validation'].remove_columns([column for column in raw_datasets.column_names['validation'] if column !='text'])
+
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
@@ -336,12 +338,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    if 'hi-transformer-v2' in model_args.config_name:
-        if model_args.config_name:
-            config = HiTransformerV2Config.from_pretrained(model_args.config_name, **config_kwargs)
-        elif model_args.model_name_or_path:
-            config = HiTransformerV2Config.from_pretrained(model_args.model_name_or_path, **config_kwargs)
-    elif 'hi-transformer' in model_args.config_name:
+    if 'hi-transformer' in model_args.config_name:
         if model_args.config_name:
             config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
         elif model_args.model_name_or_path:
@@ -364,14 +361,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    if config.model_type == 'hi-transformer-v2':
-        if model_args.tokenizer_name:
-            tokenizer = HiTransformerV2Tokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
-        elif model_args.model_name_or_path:
-            tokenizer = HiTransformerV2Tokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
-        elif model_args.config_name:
-            tokenizer = HiTransformerV2Tokenizer.from_pretrained(model_args.config_name, **tokenizer_kwargs)
-    elif config.model_type == 'hi-transformer':
+    if config.model_type == 'hi-transformer':
         if model_args.tokenizer_name:
             tokenizer = HiTransformerTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
         elif model_args.model_name_or_path:
@@ -389,16 +379,7 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        if config.model_type == 'hi-transformer-v2':
-            model = HiTransformerV2ForMaskedLM.from_pretrained(
-                model_args.model_name_or_path,
-                from_tf=bool(".ckpt" in model_args.model_name_or_path),
-                config=config,
-                cache_dir=model_args.cache_dir,
-                revision=model_args.model_revision,
-                use_auth_token=True if model_args.use_auth_token else None,
-            )
-        elif config.model_type == 'hi-transformer':
+        if config.model_type == 'hi-transformer':
             model = HiTransformerModelForPreTraining.from_pretrained(
                 model_args.model_name_or_path,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -411,9 +392,7 @@ def main():
             raise NotImplementedError('Multi-objective pre-training is not supported for other models')
     else:
         logger.info("Training new model from scratch")
-        if config.model_type == 'hi-transformer-v2':
-            model = HiTransformerV2ForMaskedLM.from_config(config)
-        elif config.model_type == 'hi-transformer':
+        if config.model_type == 'hi-transformer':
             model = HiTransformerModelForPreTraining.from_config(config)
         else:
             raise NotImplementedError('Multi-objective pre-training is not supported for other models')
@@ -541,7 +520,7 @@ def main():
         def compute_metrics(eval_preds):
             logits, labels = eval_preds
             labels = labels.reshape(-1)
-            preds = logits.argmax(-1).reshape(-1)
+            preds = logits[0].argmax(-1).reshape(-1)
             mask = labels != -100
             labels = labels[mask]
             preds = preds[mask]

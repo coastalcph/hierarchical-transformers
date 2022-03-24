@@ -1,13 +1,47 @@
 # Hi-Transformers (Hierarchical Transformers)
 
-A simplified re-implementation of the architecture proposed in the work "Hi-Transformer: Hierarchical Interactive Transformer for Efficient and Effective Long Document Modeling" by Wu et al. (2021) (https://aclanthology.org/2021.acl-short.107/).
+A simplified and modular re-implementation of the architecture proposed in the work "Hi-Transformer: Hierarchical Interactive Transformer for Efficient and Effective Long Document Modeling" by Wu et al. (2021) (https://aclanthology.org/2021.acl-short.107/).
 
 <img src="hi-transformers.png"/>
 
-The repository supports two variants of the `Hi-Transformer` architecture:
+The repository supports several variants of the `Hi-Transformer` architecture. The specific layout of stacking (interleaving) sentence (S) and document (D) encoders can be specified by the `encoder_layout` parameter. For example:
 
-* `Hi-Transformer`: Stacked paired (1-by-1) sentence (S), document (D) encoders, e.g., a 6-layer model has 12 effective transformer blocks (Layout: SD/SD/SD/SD/SD/SD)
-* `Hi-Transformer (V2)`: Stacked paired (N-by-1) sentence (S), document (D) encoders, where the pairing (or skipping) of document encoders is controlled by a parameter (`document_contextualization_factor`), e.g., a 6-layer model with a `document_contextualization_factor=3` has 8 effective transformer blocks (Layout: S/S/SD/S/S/SD)
+* **_Symmetric Interleaved_** (1-by-1) sentence (S), document (D) encoders, e.g., a 6-layer model has 12 effective transformer blocks (Layout: SD/SD/SD/SD/SD/SD).
+
+```json
+"encoder_layout": {
+"0": {"sentence_encoder": true, "document_encoder":  true},
+"1": {"sentence_encoder": true, "document_encoder":  true},
+"2": {"sentence_encoder": true, "document_encoder":  true},
+"3": {"sentence_encoder": true, "document_encoder":  true},
+"4": {"sentence_encoder": true, "document_encoder":  true},
+"5": {"sentence_encoder": true, "document_encoder":  true}},
+```
+
+* **_Non-symmetric Interleaved_** sentence (S), document (D) encoders, where pairing (or skipping) document encoders block by block, e.g., a 6-layer model and 8 effective transformer blocks (Layout: S/S/SD/S/S/SD).
+
+```json
+"encoder_layout": {
+"0": {"sentence_encoder": true, "document_encoder":  false},
+"1": {"sentence_encoder": true, "document_encoder":  false},
+"2": {"sentence_encoder": true, "document_encoder":  true},
+"3": {"sentence_encoder": true, "document_encoder":  false},
+"4": {"sentence_encoder": true, "document_encoder":  false},
+"5": {"sentence_encoder": true, "document_encoder":  true}},
+```
+
+* **_Non-symmetric (Early/Late) Interleaved_** sentence (S), document (D) encoders, where pairing (or skipping) document encoders block by block differs between early or late stages (blocks), e.g., a 6-layer model and 8 effective transformer blocks (Layout: S/S/S/S/SD/SD).
+
+
+```json
+"encoder_layout": {
+"0": {"sentence_encoder": true, "document_encoder":  false},
+"1": {"sentence_encoder": true, "document_encoder":  false},
+"2": {"sentence_encoder": true, "document_encoder":  false},
+"3": {"sentence_encoder": true, "document_encoder":  false},
+"4": {"sentence_encoder": true, "document_encoder":  true},
+"5": {"sentence_encoder": true, "document_encoder":  true}},
+```
 
 ### Requirements
 
@@ -24,15 +58,14 @@ tqdm>=4.62.0
 
 ### How to run experiments?
 
-So far, we are testing the core implementations, you can play around with the following scripts:
+So far, we are testing the core implementations, you can play around with the following script:
 
 * `Hi-Transformer`: `/models/hi-transformer/validate_hi_transformer.py`
-* `Hi-Transformer (V2)`: `/models/hi-transformer/validate_hi_transformer_v2.py`
 
-You can also try to train a new LM based on either `Hi-Transformer` variants:
+You can also try to train a new LM based on `Hi-Transformer`:
 
-* `Hi-Transformer`: `train_hi_transformer.sh`
-* `Hi-Transformer (V2)`: `train_hi_transformer_v2.sh`
+* `MLM`: `train_hi_transformer_mlm.sh`
+* `Multi-Objective Pretraining (MLM, DRP, SRP)`: `train_hi_transformer_.sh`
 
 
 Try on Google Colab: https://colab.research.google.com/drive/15feh49wqBshgkcvbO6QypvJoa3dG6P5S?usp=sharing

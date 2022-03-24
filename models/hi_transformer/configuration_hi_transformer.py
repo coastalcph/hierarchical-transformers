@@ -25,17 +25,17 @@ from transformers import PretrainedConfig
 logger = logging.get_logger(__name__)
 
 HI_TRANSFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP = {
-    "hi-transformer-base": "https://huggingface.co/hi-transformer-base-v2/resolve/main/config.json",
-    "hi-transformer-large": "https://huggingface.co/hi-transformer-large-v2/resolve/main/config.json",
+    "hi-transformer-base": "https://huggingface.co/hi-transformer-base/resolve/main/config.json",
+    "hi-transformer-large": "https://huggingface.co/hi-transformer-large/resolve/main/config.json",
 }
 
 
 class HiTransformerConfig(PretrainedConfig):
     r"""
-    This is the configuration class to store the configuration of a :class:`~transformers.HiTransformer`.
-    It is used to instantiate a Hi-Transformer model according to the specified arguments,
+    This is the configuration class to store the configuration of a :class:`~transformers.HiTransformerV2`.
+    It is used to instantiate a Hi-Transformer V2 model according to the specified arguments,
     defining the model architecture. Instantiating a configuration with the defaults will yield a similar configuration
-    to that of the Hi-Transformer `hi-transformer-base <https://huggingface.co/hi-transformer-base>`__ architecture.
+    to that of the Hi-Transformer V2 `hi-transformer-v2-base <https://huggingface.co/hi-transformer-base>`__ architecture.
 
     Configuration objects inherit from :class:`~transformers.PretrainedConfig` and can be used to control the model
     outputs. Read the documentation from :class:`~transformers.PretrainedConfig` for more information.
@@ -52,6 +52,8 @@ class HiTransformerConfig(PretrainedConfig):
             The maximum sentence length that this model might ever be used with.
         model_max_length (:obj:`int`, `optional`, defaults to 8192):
             The maximum  sequence length (max_sentences * max_sentence_size) that this model might ever be used with
+        encoder_layout (:obj:`Dict`):
+            The sentence/document encoder layout.
         hidden_size (:obj:`int`, `optional`, defaults to 768):
             Dimensionality of the encoder layers and the pooler layer.
         num_hidden_layers (:obj:`int`, `optional`, defaults to 12):
@@ -90,14 +92,14 @@ class HiTransformerConfig(PretrainedConfig):
         classifier_dropout (:obj:`float`, `optional`):
             The dropout ratio for the classification head.
     """
-    model_type = "hi-transformer"
+    model_type = "hi-transformer-v2"
 
     def __init__(
         self,
         vocab_size=30522,
         hidden_size=768,
         max_sentences=64,
-        max_sentence_length=128,
+        max_sentence_size=128,
         model_max_length=8192,
         num_hidden_layers=12,
         num_attention_heads=12,
@@ -105,12 +107,13 @@ class HiTransformerConfig(PretrainedConfig):
         hidden_act="gelu",
         hidden_dropout_prob=0.1,
         attention_probs_dropout_prob=0.1,
-        max_position_embeddings=8192,
+        max_position_embeddings=512,
         type_vocab_size=2,
         initializer_range=0.02,
         layer_norm_eps=1e-12,
         pad_token_id=0,
         position_embedding_type="absolute",
+        encoder_layout=None,
         use_cache=True,
         classifier_dropout=None,
         **kwargs
@@ -120,8 +123,9 @@ class HiTransformerConfig(PretrainedConfig):
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.max_sentences = max_sentences
-        self.max_sentence_length = max_sentence_length
+        self.max_sentence_size = max_sentence_size
         self.model_max_length = model_max_length
+        self.encoder_layout = encoder_layout
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
         self.hidden_act = hidden_act

@@ -39,15 +39,16 @@ htf_model.hi_transformer.embeddings.LayerNorm.load_state_dict(roberta_model.robe
 
 # copy transformer layers
 for idx in range(NUM_HIDDEN_LAYERS):
-    htf_model.hi_transformer.encoder.layer[idx].position_embeddings.weight.data = roberta_model.roberta.embeddings.position_embeddings.weight[1:MAX_SENTENCES+2]
     htf_model.hi_transformer.encoder.layer[idx].sentence_encoder.load_state_dict(roberta_model.roberta.encoder.layer[idx].state_dict())
-    htf_model.hi_transformer.encoder.layer[idx].document_encoder.load_state_dict(roberta_model.roberta.encoder.layer[idx].state_dict())
+    if htf_model.config.encoder_layout[str(idx)]['document_encoder']:
+        htf_model.hi_transformer.encoder.layer[idx].document_encoder.load_state_dict(roberta_model.roberta.encoder.layer[idx].state_dict())
+        htf_model.hi_transformer.encoder.layer[idx].position_embeddings.weight.data = roberta_model.roberta.embeddings.position_embeddings.weight[1:MAX_SENTENCES+2]
 
 # copy lm_head
 htf_model.lm_head.load_state_dict(roberta_model.lm_head.state_dict())
 
 # save model
-htf_model.save_pretrained('../../data/PLMs/hi-transformer-v2-roberta')
+htf_model.save_pretrained('../../data/PLMs/hi-transformer-roberta')
 
 # save tokenizer
 htf_tokenizer = HiTransformerTokenizer.from_pretrained('roberta-base')
@@ -55,5 +56,5 @@ htf_tokenizer._tokenizer = tokenizer
 htf_tokenizer.save_pretrained('../../data/PLMs/hi-transformer-v2-roberta')
 
 # re-load model
-htf_model = HiTransformerForSequenceClassification.from_pretrained('../../data/PLMs/hi-transformer-roberta')
+htf_model = HiTransformerForSequenceClassification.from_pretrained('../../data/PLMs/hi-transformer-v2-roberta')
 print()

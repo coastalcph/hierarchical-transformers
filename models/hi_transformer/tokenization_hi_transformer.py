@@ -3,6 +3,7 @@ import torch
 from transformers import AutoTokenizer
 from .configuration_hi_transformer import HiTransformerConfig
 from transformers.utils import logging
+from nltk import sent_tokenize
 logger = logging.get_logger(__name__)
 
 
@@ -71,16 +72,26 @@ class HiTransformerTokenizer:
         return self._tokenizer.save_pretrained( *args, **kwargs)
 
     def __call__(self, texts, **kwargs):
-        batch = self._tokenizer(texts, add_special_tokens=False,  **kwargs)
-        batch_out = {input_type: [] for input_type in batch}
-        for input_type in batch:
+        greedy_chunking = kwargs.pop('greedy_chunking', None)
+        if greedy_chunking:
+            # fixed uniform chunking
+            batch = self.uniform_chunking(texts, **kwargs)
+        else:
+            # dynamic sentence splitting and grouping
+            batch = self.sentence_splitting(texts, **kwargs)
+        return batch
+
+    def uniform_chunking(self, texts, **kwargs):
+        original_batch = self._tokenizer(texts, add_special_tokens=False, **kwargs)
+        batch = {input_type: [] for input_type in original_batch}
+        for input_type in original_batch:
             fixed_batch = []
-            for example in batch[input_type]:
+            for example in original_batch[input_type]:
                 fixed_batch.append(self.chunks(example[: self.model_max_length - self.config.max_sentences],
                                                chunk_size=self.config.max_sentence_length,
                                                special_id=self.type2id[input_type]))
-            batch_out[input_type] = fixed_batch if isinstance(fixed_batch[0], list) else torch.stack(fixed_batch)
-        return batch_out
+            batch[input_type] = fixed_batch if isinstance(fixed_batch[0], list) else torch.stack(fixed_batch)
+        return batch
 
     def chunks(self, flat_inputs, chunk_size=128, special_id=0):
         if isinstance(flat_inputs, list):
@@ -99,6 +110,54 @@ class HiTransformerTokenizer:
         structured_inputs = torch.stack([torch.cat((torch.tensor([special_id[0] if flat_inputs[i:i + chunk_size-1].sum() else special_id[1]], dtype=torch.int),
                                                     flat_inputs[i:i + chunk_size-1])) for i in range(0, len(flat_inputs), chunk_size-1)])
         return structured_inputs.reshape(-1)
+
+    def sentence_splitting(self, texts, **kwargs):
+        fixed_batch = []
+        doc_out = {}
+        for text in texts:
+            # sentence splitting
+            sentences = sent_tokenize(text)
+            # tokenization of sentences
+            sentences = self._tokenizer(sentences, add_special_tokens=False, padding=False, truncation=False)
+            # sentence grouping - merging short sentences to minimize padding
+            doc_out = self.sentence_grouping(sentences)
+            fixed_batch.append(doc_out)
+        # batchify examples
+        batch = {input_type: [] for input_type in doc_out}
+        for input_type in batch:
+            batch[input_type] = [example[input_type] for example in fixed_batch]
+            if not isinstance(batch[input_type][0], list):
+                batch[input_type] = torch.stack(batch[input_type])
+
+        return batch
+
+    def sentence_grouping(self, sentences):
+        doc_out = {input_type: [] for input_type in sentences}
+        for input_type in sentences:
+            tmp_doc = []
+            tmp_sentence = []
+            for example in sentences[input_type]:
+                if len(tmp_doc) >= self.config.max_sentences:
+                    break
+                if len(tmp_sentence) + len(example) <= self.config.max_sentence_length - 1:
+                    tmp_sentence.extend(example)
+                else:
+                    tmp_doc.append(self.pad_sentence(tmp_sentence if len(tmp_sentence) else example,
+                                                     chunk_size=self.config.max_sentence_length,
+                                                     special_id=self.type2id[input_type]))
+                    tmp_sentence = example if len(tmp_sentence) else example[self.config.max_sentence_length:]
+            doc_out[input_type] = [token for sentence in tmp_doc for token in sentence]
+        return doc_out
+
+    def pad_sentence(self, flat_input, chunk_size=128, special_id=(0, 0)):
+        if isinstance(flat_input, list):
+            return [special_id[0]] + flat_input[:chunk_size-1] + [self.pad_token_id] * max(0, chunk_size - len(flat_input) - 1)
+        else:
+            return torch.cat((torch.tensor([special_id[0] if flat_input[:chunk_size-1].sum()
+                                            else special_id[1]], dtype=torch.int),
+                              flat_input[:chunk_size-1],
+                              torch.tensor([self.pad_token_id] * max(0, chunk_size - len(flat_input) - 1), dtype=torch.int)
+                              ))
 
 
 if __name__ == "__main__":

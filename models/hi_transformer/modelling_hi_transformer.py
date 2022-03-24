@@ -21,7 +21,7 @@ from packaging import version
 from dataclasses import dataclass
 from typing import Optional, Tuple
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss, KLDivLoss
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss, HuberLoss
 
 from transformers.file_utils import (
     add_code_sample_docstrings,
@@ -274,14 +274,19 @@ class HiTransformerEmbeddings(nn.Module):
 
 
 class HiTransformerLayer(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, use_sentence_encoder=True, use_document_encoder=True):
         super().__init__()
-        self.sentence_encoder = TransformerLayer(config)
-        self.document_encoder = TransformerLayer(config)
         self.max_sentence_length = config.max_sentence_length
         self.max_sentences = config.max_sentences
         self.hidden_size = config.hidden_size
-        self.position_embeddings = nn.Embedding(config.max_sentences+1, config.hidden_size, padding_idx=config.pad_token_id)
+        self.use_document_encoder = use_document_encoder
+        self.use_sentence_encoder = use_sentence_encoder
+        if self.use_sentence_encoder:
+            self.sentence_encoder = TransformerLayer(config)
+        if self.use_document_encoder:
+            self.document_encoder = TransformerLayer(config)
+            self.position_embeddings = nn.Embedding(config.max_sentences+1, config.hidden_size,
+                                                    padding_idx=config.pad_token_id)
 
     def forward(
         self,
@@ -291,37 +296,42 @@ class HiTransformerLayer(nn.Module):
         output_attentions=False,
     ):
 
-        # transform sequences to sentences
-        sentence_inputs = transform_tokens2sentences(hidden_states,
-                                                     num_sentences=num_sentences,
-                                                     max_sentence_length=self.max_sentence_length)
-        sentence_masks = transform_masks2sentences(attention_mask,
-                                                   num_sentences=num_sentences,
-                                                   max_sentence_length=self.max_sentence_length)
+        if self.use_sentence_encoder:
+            # transform sequences to sentences
+            sentence_inputs = transform_tokens2sentences(hidden_states,
+                                                         num_sentences=num_sentences,
+                                                         max_sentence_length=self.max_sentence_length)
+            sentence_masks = transform_masks2sentences(attention_mask,
+                                                       num_sentences=num_sentences,
+                                                       max_sentence_length=self.max_sentence_length)
 
-        sentence_outputs = self.sentence_encoder(sentence_inputs,
-                                                 sentence_masks,
-                                                 output_attentions=output_attentions)
+            sentence_outputs = self.sentence_encoder(sentence_inputs,
+                                                     sentence_masks,
+                                                     output_attentions=output_attentions)
 
-        # transform sentences to tokens
-        outputs = transform_sentences2tokens(sentence_outputs[0],
-                                             num_sentences=num_sentences,
-                                             max_sentence_length=self.max_sentence_length)
+            # transform sentences to tokens
+            outputs = transform_sentences2tokens(sentence_outputs[0],
+                                                 num_sentences=num_sentences,
+                                                 max_sentence_length=self.max_sentence_length)
+        else:
+            outputs = hidden_states
 
-        # gather sentence representative tokens
-        sentence_global_tokens = outputs[:, ::self.max_sentence_length]
-        sentence_attention_mask = attention_mask[:, :, :, ::self.max_sentence_length]
+        document_outputs = (None, None)
+        if self.use_document_encoder:
+            # gather sentence representative tokens
+            sentence_global_tokens = outputs[:, ::self.max_sentence_length]
+            sentence_attention_mask = attention_mask[:, :, :, ::self.max_sentence_length]
 
-        sentence_positions = torch.arange(1, num_sentences + 1).repeat(sentence_global_tokens.size(0), 1).to(sentence_global_tokens.device) \
-                             * (sentence_attention_mask.reshape(-1, num_sentences) >= -100).int().to(sentence_global_tokens.device)
-        sentence_global_tokens += self.position_embeddings(sentence_positions)
+            sentence_positions = torch.arange(1, num_sentences+1).repeat(sentence_global_tokens.size(0), 1).to(sentence_global_tokens.device) \
+                                 * (sentence_attention_mask.reshape(-1, num_sentences) >= -100).int().to(sentence_global_tokens.device)
+            sentence_global_tokens += self.position_embeddings(sentence_positions)
 
-        document_outputs = self.document_encoder(sentence_global_tokens,
-                                                 sentence_attention_mask,
-                                                 output_attentions=output_attentions)
+            document_outputs = self.document_encoder(sentence_global_tokens,
+                                                     sentence_attention_mask,
+                                                     output_attentions=output_attentions)
 
-        # replace sentence representative tokens
-        outputs[:, ::self.max_sentence_length] = document_outputs[0]
+            # replace sentence representative tokens
+            outputs[:, ::self.max_sentence_length] = document_outputs[0]
 
         if output_attentions:
             return outputs, sentence_outputs[1], document_outputs[1]
@@ -366,7 +376,10 @@ class HiTransformerEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.layer = nn.ModuleList([HiTransformerLayer(config) for _ in range(config.num_hidden_layers)])
+        self.layer = nn.ModuleList([HiTransformerLayer(config,
+                                                       use_sentence_encoder=self.config.encoder_layout[str(idx)]['sentence_encoder'],
+                                                       use_document_encoder=self.config.encoder_layout[str(idx)]['document_encoder'])
+                                    for idx in range(config.num_hidden_layers)])
         self.gradient_checkpointing = False
 
     def forward(
@@ -466,6 +479,25 @@ class HiTransformerPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
+
+    def tie_weights(self):
+        """
+        Tie the weights between sentence positional embeddings across all layers.
+        If the `torchscript` flag is set in the configuration, can't handle parameter sharing so we are cloning the
+        weights instead.
+        """
+        original_position_embeddings = None
+        if hasattr(self, "encoder"):
+            for module in self.encoder.layer:
+                if hasattr(module, "position_embeddings"):
+                    assert hasattr(module.position_embeddings, "weight")
+                    if original_position_embeddings is None:
+                        original_position_embeddings = module.position_embeddings
+                    if self.config.torchscript:
+                        module.position_embeddings.weight = nn.Parameter(original_position_embeddings.weight.clone())
+                    else:
+                        module.position_embeddings.weight = original_position_embeddings.weight
+        return
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, HiTransformerEncoder):
@@ -631,6 +663,7 @@ class HiTransformerModel(HiTransformerPreTrainedModel):
 
         # Initialize weights and apply final processing
         self.post_init()
+        self.tie_weights()
 
     def get_input_embeddings(self):
         return self.embeddings.word_embeddings
@@ -1086,7 +1119,7 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
             total_loss = masked_lm_loss
 
         if document_labels is not None:
-            loss_fct = KLDivLoss(reduction="batchmean")
+            loss_fct = MSELoss()
             drp_loss = loss_fct(doc_representations, document_labels)
             if labels is not None:
                 total_loss += drp_loss
@@ -1094,8 +1127,8 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
                 total_loss = drp_loss
 
         if sentence_labels is not None:
-            loss_fct = KLDivLoss(reduction="batchmean")
-            srp_loss = loss_fct(sent_representations, sentence_labels.view(-1))
+            loss_fct = MSELoss()
+            srp_loss = loss_fct(sent_representations.view(-1, self.config.hidden_size), sentence_labels.view(-1, self.config.hidden_size))
             if labels is not None or document_labels is not None:
                 total_loss += srp_loss
             else:
@@ -1109,7 +1142,7 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
             loss=total_loss,
             prediction_logits=prediction_scores,
             document_representations=doc_representations,
-            sentence_representations=torch.zeros(1).float(),
+            sentence_representations=sent_representations,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
