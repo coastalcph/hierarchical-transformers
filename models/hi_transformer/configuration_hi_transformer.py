@@ -32,10 +32,10 @@ HI_TRANSFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP = {
 
 class HiTransformerConfig(PretrainedConfig):
     r"""
-    This is the configuration class to store the configuration of a :class:`~transformers.HiTransformerV2`.
-    It is used to instantiate a Hi-Transformer V2 model according to the specified arguments,
+    This is the configuration class to store the configuration of a :class:`~transformers.HiTransformer`.
+    It is used to instantiate a Hi-Transformer model according to the specified arguments,
     defining the model architecture. Instantiating a configuration with the defaults will yield a similar configuration
-    to that of the Hi-Transformer V2 `hi-transformer-v2-base <https://huggingface.co/hi-transformer-base>`__ architecture.
+    to that of the Hi-Transformer `hi-transformer-base <https://huggingface.co/hi-transformer-base>`__ architecture.
 
     Configuration objects inherit from :class:`~transformers.PretrainedConfig` and can be used to control the model
     outputs. Read the documentation from :class:`~transformers.PretrainedConfig` for more information.
@@ -92,7 +92,7 @@ class HiTransformerConfig(PretrainedConfig):
         classifier_dropout (:obj:`float`, `optional`):
             The dropout ratio for the classification head.
     """
-    model_type = "hi-transformer-v2"
+    model_type = "hi-transformer"
 
     def __init__(
         self,

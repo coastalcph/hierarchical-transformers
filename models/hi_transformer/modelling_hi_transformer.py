@@ -21,7 +21,7 @@ from packaging import version
 from dataclasses import dataclass
 from typing import Optional, Tuple
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss, HuberLoss
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 from transformers.file_utils import (
     add_code_sample_docstrings,
@@ -961,7 +961,7 @@ class HiTransformerModelForDocumentRepresentation(HiTransformerPreTrainedModel):
 
         drp_loss = None
         if labels is not None:
-            loss_fct = KLDivLoss()
+            loss_fct = MSELoss()
             drp_loss = loss_fct(pooled_outputs, labels)
 
         if not return_dict:
@@ -1037,7 +1037,7 @@ class HiTransformerModelForMaskedSentenceRepresentation(HiTransformerPreTrainedM
 
         srp_loss = None
         if labels is not None:
-            loss_fct = KLDivLoss()
+            loss_fct = MSELoss()
             srp_loss = loss_fct(sentence_outputs, labels)
 
         if not return_dict:
