@@ -1064,11 +1064,14 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         super().__init__(config)
 
         self.hi_transformer = HiTransformerModel(config)
-        self.lm_head = HiTransformerLMHead(config, sampled_decoding=False)
-        self.pooler = HiTransformerPooler(config, pooling='max')
-        self.sentencizer = HiTransformerSentencizer(config)
-        self.document_cls = nn.Linear(config.hidden_size, config.hidden_size)
-        self.sentence_cls = nn.Linear(config.hidden_size, config.hidden_size)
+        if self.config.mlm or self.config.mslm:
+            self.lm_head = HiTransformerLMHead(config, sampled_decoding=False)
+        if self.config.drp:
+            self.pooler = HiTransformerPooler(config, pooling='max')
+            self.document_cls = nn.Linear(config.hidden_size, config.hidden_size)
+        if self.config.srp:
+            self.sentencizer = HiTransformerSentencizer(config)
+            self.sentence_cls = nn.Linear(config.hidden_size, config.hidden_size)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -1100,17 +1103,25 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
             return_dict=return_dict,
         )
 
-        # MLM
+        # Collect sequence output representations
         sequence_output = outputs[0]
-        prediction_scores = self.lm_head(sequence_output, labels)
+
+        # MLM
+        prediction_scores = None
+        if self.config.mlm or self.config.mslm:
+            prediction_scores = self.lm_head(sequence_output, labels)
 
         # DRP
-        pooled_outputs = self.pooler(sequence_output)
-        doc_representations = self.document_cls(pooled_outputs)
+        doc_representations = None
+        if self.config.drp:
+            pooled_outputs = self.pooler(sequence_output)
+            doc_representations = self.document_cls(pooled_outputs)
 
-        # MRP
-        sentence_outputs = self.sentencizer(sequence_output)
-        sent_representations = self.sentence_cls(sentence_outputs)
+        # SRP
+        sent_representations = None
+        if self.config.srp:
+            sentence_outputs = self.sentencizer(sequence_output)
+            sent_representations = self.sentence_cls(sentence_outputs)
 
         total_loss = None
         if labels is not None:

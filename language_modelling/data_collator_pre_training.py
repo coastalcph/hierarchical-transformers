@@ -36,6 +36,10 @@ class DataCollatorForPreTraining(DataCollatorMixin):
             Whether or not to use masked language modeling. If set to `False`, the labels are the same as the inputs
             with the padding tokens ignored (by setting them to -100). Otherwise, the labels are -100 for non-masked
             tokens and the value to predict for the masked token.
+        mslm (`bool`, *optional*, defaults to `True`):
+            Whether or not to use masked sentence language modeling. If set to `False`, the labels are the same as the inputs
+            with the padding tokens ignored (by setting them to -100). Otherwise, the labels are -100 for non-masked
+            tokens and the value to predict for the masked token in full sentences.
         drp (`bool`, *optional*, defaults to `True`):
             Whether or not to use document prediction. If set to `False`, the labels are the same as the inputs
             with the padding tokens ignored (by setting them to -100). Otherwise, the labels are -100 for non-masked
@@ -63,6 +67,7 @@ class DataCollatorForPreTraining(DataCollatorMixin):
     tfidf_vect: TfidfVectorizer
     pca_solver: PCA
     mlm: bool = True
+    mslm: bool = True
     drp: bool = True
     srp: bool = True
     mlm_probability: float = 0.15
@@ -94,6 +99,8 @@ class DataCollatorForPreTraining(DataCollatorMixin):
             batch["input_ids"], batch["labels"] = self.torch_mask_tokens(
                 batch["input_ids"], special_tokens_mask=special_tokens_mask
             )
+        if self.mslm:
+            batch["input_ids"], batch["labels"] = self.torch_mask_sentence_tokens(batch["input_ids"], batch["attention_mask"])
         if self.drp:
             batch["document_labels"] = self.torch_doc_reprs(original_inputs)
         if self.srp:
@@ -149,6 +156,40 @@ class DataCollatorForPreTraining(DataCollatorMixin):
         inputs[indices_random] = random_words[indices_random]
 
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
+        return inputs, labels
+
+    def torch_mask_sentence_tokens(self, inputs: Any, attention_mask: Any) -> Tuple[Any, Any]:
+        """
+        Prepare masked sentence tokens inputs/labels for masked sentence language modeling.
+        """
+        import torch
+
+        labels = inputs.clone()
+
+        for idx, input in enumerate(inputs):
+            # Find padded sentences
+            sentence_mask = [attention_mask[idx][i:i + self.max_sentence_length].sum() != 0
+                             for i in range(0, len(input), self.max_sentence_length)]
+            sentence_mask = torch.tensor(sentence_mask, dtype=torch.bool)
+            # We sample a few sentences in each sequence for MSLM training (with probability `self.mlm_probability`)
+            probability_matrix = torch.full(sentence_mask.shape, self.mlm_probability)
+            probability_matrix.masked_fill_(~sentence_mask, value=0.0)
+            masked_indices = torch.bernoulli(probability_matrix).bool()
+            for sent_idx, mask in enumerate(masked_indices):
+                if mask:
+                    # Mask sentence tokens except <cls>
+                    labels[idx][sent_idx * self.max_sentence_length] = -100
+                    # Find non-padded sentence tokens
+                    no_padded_ids = (inputs[idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length] != self.tokenizer.pad_token_id).bool()
+                    # Mask non-padded sentence tokens
+                    inputs[idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length][no_padded_ids] = self.tokenizer.mask_token_id
+                else:
+                    # We only compute loss on masked sentence tokens
+                    labels[idx][sent_idx * self.max_sentence_length:(sent_idx + 1) * self.max_sentence_length] \
+                        = -100
+            # Do not compute loss on padded sequence tokens
+            labels[idx][~attention_mask[idx].bool()] = -100
+
         return inputs, labels
 
     def numpy_call(self, examples: List[Union[List[int], Any, Dict[str, Any]]]) -> Dict[str, Any]:

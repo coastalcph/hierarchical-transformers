@@ -182,20 +182,26 @@ class DataTrainingArguments:
             "value if set."
         },
     )
-    masked_language_modelling: Optional[int] = field(
-        default=True,
+    mlm: Optional[int] = field(
+        default=False,
         metadata={
             "help": "Whether to add masked language modelling in pre-training objectives"
         },
     )
-    document_representation_prediction: Optional[int] = field(
+    mslm: Optional[int] = field(
         default=True,
+        metadata={
+            "help": "Whether to add masked sentence language modelling in pre-training objectives"
+        },
+    )
+    drp: Optional[int] = field(
+        default=False,
         metadata={
             "help": "Whether to add document representation prediction in pre-training objectives"
         },
     )
-    masked_sentence_representation_prediction: Optional[int] = field(
-        default=True,
+    srp: Optional[int] = field(
+        default=False,
         metadata={
             "help": "Whether to add masked sentence representation prediction in pre-training objectives"
         },
@@ -264,6 +270,10 @@ def main():
                 f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
                 "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
             )
+
+    # Check pre-training objectives:
+    if not data_args.mlm and not data_args.mslm and not data_args.drp and not data_args.srp:
+        raise Exception('At least one pre-training objective has to be active!!!')
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
@@ -354,6 +364,12 @@ def main():
             logger.info(f"Overriding config: {model_args.config_overrides}")
             config.update_from_string(model_args.config_overrides)
             logger.info(f"New config: {config}")
+
+    # Add configuration pre-training flags
+    config.mlm = data_args.mlm
+    config.mslm = data_args.mslm
+    config.drp = data_args.drp
+    config.srp = data_args.srp
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -528,14 +544,20 @@ def main():
 
             return {'accuracy': accuracy['accuracy']}
 
-    if data_args.document_representation_prediction or data_args.masked_sentence_representation_prediction:
-        tfidf_vect, pca_solver = train_text_featurizer(tokenizer=tokenizer, documents=raw_datasets['train']['text'][:1000],
+    tfidf_vect, pca_solver = None, None
+    if data_args.drp or data_args.srp:
+        tfidf_vect, pca_solver = train_text_featurizer(tokenizer=tokenizer,
+                                                       documents=raw_datasets['train']['text'][:1000],
                                                        hidden_units=config.hidden_size)
 
     # Data collator
     # This one will take care of pre-training labels.
     data_collator = DataCollatorForPreTraining(
         tokenizer=tokenizer,
+        mlm=data_args.mlm,
+        mslm=data_args.mslm,
+        srp=data_args.srp,
+        drp=data_args.drp,
         mlm_probability=data_args.mlm_probability,
         pad_to_multiple_of=config.max_sentence_length,
         max_sentence_length=config.max_sentence_length,
