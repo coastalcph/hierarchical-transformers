@@ -442,6 +442,7 @@ class HiTransformerEncoder(nn.Module):
                     hidden_states,
                     all_hidden_states,
                     all_self_attentions,
+                    all_sentence_attentions
                 ]
                 if v is not None
             )
@@ -451,6 +452,24 @@ class HiTransformerEncoder(nn.Module):
             attentions=all_self_attentions,
             sentence_attentions=all_sentence_attentions,
         )
+
+    def _tie_weights(self):
+        """
+        Tie the weights between sentence positional embeddings across all layers.
+        If the `torchscript` flag is set in the configuration, can't handle parameter sharing so we are cloning the
+        weights instead.
+        """
+        original_position_embeddings = None
+        for module in self.layer:
+            if hasattr(module, "position_embeddings"):
+                    assert hasattr(module.position_embeddings, "weight")
+                    if original_position_embeddings is None:
+                        original_position_embeddings = module.position_embeddings
+                    if self.config.torchscript:
+                        module.position_embeddings.weight = nn.Parameter(original_position_embeddings.weight.clone())
+                    else:
+                        module.position_embeddings.weight = original_position_embeddings.weight
+        return
 
 
 class HiTransformerPreTrainedModel(PreTrainedModel):
@@ -479,25 +498,6 @@ class HiTransformerPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
-
-    def tie_weights(self):
-        """
-        Tie the weights between sentence positional embeddings across all layers.
-        If the `torchscript` flag is set in the configuration, can't handle parameter sharing so we are cloning the
-        weights instead.
-        """
-        original_position_embeddings = None
-        if hasattr(self, "encoder"):
-            for module in self.encoder.layer:
-                if hasattr(module, "position_embeddings"):
-                    assert hasattr(module.position_embeddings, "weight")
-                    if original_position_embeddings is None:
-                        original_position_embeddings = module.position_embeddings
-                    if self.config.torchscript:
-                        module.position_embeddings.weight = nn.Parameter(original_position_embeddings.weight.clone())
-                    else:
-                        module.position_embeddings.weight = original_position_embeddings.weight
-        return
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, HiTransformerEncoder):
@@ -663,7 +663,6 @@ class HiTransformerModel(HiTransformerPreTrainedModel):
 
         # Initialize weights and apply final processing
         self.post_init()
-        self.tie_weights()
 
     def get_input_embeddings(self):
         return self.embeddings.word_embeddings
