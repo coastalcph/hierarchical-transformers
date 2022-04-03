@@ -182,7 +182,6 @@ class HiTransformerForPreTrainingOutput(ModelOutput):
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
-
 class HiTransformerEmbeddings(nn.Module):
     """
     Same as BertEmbeddings with a tiny tweak for positional embeddings indexing.
@@ -296,6 +295,7 @@ class HiTransformerLayer(nn.Module):
         output_attentions=False,
     ):
 
+        sentence_outputs = (None, None)
         if self.use_sentence_encoder:
             # transform sequences to sentences
             sentence_inputs = transform_tokens2sentences(hidden_states,
@@ -319,12 +319,12 @@ class HiTransformerLayer(nn.Module):
         document_outputs = (None, None)
         if self.use_document_encoder:
             # gather sentence representative tokens
-            sentence_global_tokens = outputs[:, ::self.max_sentence_length]
-            sentence_attention_mask = attention_mask[:, :, :, ::self.max_sentence_length]
+            sentence_global_tokens = outputs[:, ::self.max_sentence_length].clone()
+            sentence_attention_mask = attention_mask[:, :, :, ::self.max_sentence_length].clone()
 
-            sentence_positions = torch.arange(1, num_sentences+1).repeat(sentence_global_tokens.size(0), 1).to(sentence_global_tokens.device) \
-                                 * (sentence_attention_mask.reshape(-1, num_sentences) >= -100).int().to(sentence_global_tokens.device)
-            sentence_global_tokens += self.position_embeddings(sentence_positions)
+            sentence_positions = torch.arange(1, num_sentences+1).repeat(outputs.size(0), 1).to(outputs.device) \
+                                 * (sentence_attention_mask.reshape(-1, num_sentences) >= -100).int().to(outputs.device)
+            outputs[:, ::self.max_sentence_length] += self.position_embeddings(sentence_positions)
 
             document_outputs = self.document_encoder(sentence_global_tokens,
                                                      sentence_attention_mask,
