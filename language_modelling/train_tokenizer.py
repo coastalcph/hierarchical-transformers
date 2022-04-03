@@ -6,7 +6,6 @@ import argparse
 
 CUSTOM_TOK_FOLDER = '../data/custom-tokenizer'
 HI_TRANSFORMER_FOLDER = '../data/hi-transformer'
-HI_TRANSFORMERV2_FOLDER = '../data/hi-transformer-v2'
 ROBERTA_FOLDER = '../data/roberta'
 
 
@@ -39,7 +38,7 @@ def main():
     )
 
     # load datasets
-    dataset = load_dataset("wikitext", "wikitext-103-raw-v1", split='train')
+    dataset = load_dataset("multi_eurlex", "en", split='train')
 
     # train tokenizer
     backend_tokenizer.train_from_iterator(trainer=trainer, iterator=batch_iterator(dataset))
@@ -82,7 +81,6 @@ def main():
     new_roberta_tokenizer.save_pretrained(CUSTOM_TOK_FOLDER)
     new_roberta_tokenizer.save_pretrained(ROBERTA_FOLDER)
     new_hi_transformer_tokenizer.save_pretrained(HI_TRANSFORMER_FOLDER)
-    new_hi_transformer_tokenizer.save_pretrained(HI_TRANSFORMERV2_FOLDER)
 
     # re-load tokenizer and test
     reloaded_tokenizer = AutoTokenizer.from_pretrained(CUSTOM_TOK_FOLDER)
