@@ -43,6 +43,7 @@ from transformers import (
     HfArgumentParser,
     Trainer,
     TrainingArguments,
+    is_torch_tpu_available,
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
@@ -145,7 +146,7 @@ class DataTrainingArguments:
         },
     )
     max_seq_length: Optional[int] = field(
-        default=8192,
+        default=None,
         metadata={
             "help": "The maximum total input sequence length after tokenization. Sequences longer "
             "than this will be truncated."
@@ -328,7 +329,7 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    if 'hi-transformer' in model_args.config_name:
+    if model_args.config_name and 'hi-transformer' in model_args.config_name:
         if model_args.config_name:
             config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
         elif model_args.model_name_or_path:
@@ -480,7 +481,7 @@ def main():
                 total_length = (total_length // max_seq_length) * max_seq_length
             # Split by chunks of max_len.
             result = {
-                k: [t[i: i + max_seq_length] for i in range(0, total_length, max_seq_length)]
+                k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
                 for k, t in concatenated_examples.items()
             }
             return result
@@ -506,34 +507,44 @@ def main():
             raise ValueError("--do_train requires a train dataset")
         train_dataset = tokenized_datasets["train"]
         if data_args.max_train_samples is not None:
-            train_dataset = train_dataset.select(range(data_args.max_train_samples))
+            max_train_samples = min(len(train_dataset), data_args.max_train_samples)
+            train_dataset = train_dataset.select(range(max_train_samples))
 
     if training_args.do_eval:
         if "validation" not in tokenized_datasets:
             raise ValueError("--do_eval requires a validation dataset")
         eval_dataset = tokenized_datasets["validation"]
         if data_args.max_eval_samples is not None:
-            eval_dataset = eval_dataset.select(range(data_args.max_eval_samples))
+            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
+            eval_dataset = eval_dataset.select(range(max_eval_samples))
+
+        def preprocess_logits_for_metrics(logits, labels):
+            if isinstance(logits, tuple):
+                # Depending on the model and config, logits may contain extra tensors,
+                # like past_key_values, but logits always come first
+                logits = logits[0]
+            return logits.argmax(dim=-1)
 
         metric = load_metric("accuracy")
 
         def compute_metrics(eval_preds):
-            logits, labels = eval_preds
+            preds, labels = eval_preds
+            # preds have the same shape as the labels, after the argmax(-1) has been calculated
+            # by preprocess_logits_for_metrics
             labels = labels.reshape(-1)
-            preds = logits.argmax(-1).reshape(-1)
+            preds = preds.reshape(-1)
             mask = labels != -100
             labels = labels[mask]
             preds = preds[mask]
-            accuracy = metric.compute(predictions=preds, references=labels)
-
-            return {'accuracy': accuracy['accuracy']}
+            return metric.compute(predictions=preds, references=labels)
 
     # Data collator
     # This one will take care of randomly masking the tokens.
+    pad_to_multiple_of_8 = data_args.line_by_line and training_args.fp16 and not data_args.pad_to_max_length
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm_probability=data_args.mlm_probability,
-        pad_to_multiple_of=config.model_max_length,
+        pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
     )
 
     # Initialize our Trainer
@@ -544,7 +555,10 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics if training_args.do_eval else None,
+        compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics
+        if training_args.do_eval and not is_torch_tpu_available()
+        else None,
     )
 
     # Training
