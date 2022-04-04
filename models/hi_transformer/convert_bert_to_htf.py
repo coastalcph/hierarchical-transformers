@@ -23,9 +23,10 @@ def convert_bert_to_htf():
     # Required arguments
     parser.add_argument('--warmup_strategy', default='grouped')
     parser.add_argument('--layout', default='s1')
+    parser.add_argument('--max_sentences', default=8)
     config = parser.parse_args()
     MAX_SENTENCE_LENGTH = 128
-    MAX_SENTENCES = 64
+    MAX_SENTENCES = config.max_sentences
     ENCODER_LAYOUT = {}
     for idx, block_pattern in enumerate(LAYOUTS[config.layout].split('|')):
         ENCODER_LAYOUT[str(idx)] = {"sentence_encoder": True if 'S' in block_pattern else False,
@@ -90,14 +91,14 @@ def convert_bert_to_htf():
     # htf_model.lm_head.load_state_dict(bert_model.lm_head.state_dict())
 
     # save model
-    htf_model.save_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
+    htf_model.save_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-{config.warmup_strategy}')
 
     # save tokenizer
-    tokenizer.save_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
+    tokenizer.save_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-{config.warmup_strategy}')
 
     # re-load model
-    htf_model = HiTransformerForSequenceClassification.from_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
-    htf_tokenizer = HiTransformerTokenizer.from_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
+    htf_model = HiTransformerForSequenceClassification.from_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-{config.warmup_strategy}')
+    htf_tokenizer = HiTransformerTokenizer.from_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-{config.warmup_strategy}')
     print(f'Hi-transformer model with layout {config.layout} and warm-up strategy {config.warmup_strategy} is ready to run!')
 
 

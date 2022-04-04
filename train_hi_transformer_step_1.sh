@@ -4,8 +4,11 @@ export PYTHONPATH=.
 
 LAYOUT='s1'
 MODEL_WARMUP_STRATEGY='grouped'
+MODEL_MAX_LENGTH=1024
+MAX_SENTENCES=8
 
-python3 models/hi_transformer/convert_bert_to_htf.py --layout ${LAYOUT} --warmup_strategy ${MODEL_WARMUP_STRATEGY}
+python3 models/hi_transformer/convert_bert_to_htf.py --layout ${LAYOUT} --warmup_strategy ${MODEL_WARMUP_STRATEGY} \
+    --max_sentences ${MAX_SENTENCES}
 
 python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm.py \
     --config_name data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY} \
@@ -27,10 +30,10 @@ python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm
     --per_device_eval_batch_size 8 \
     --gradient_accumulation_steps 2 \
     --eval_accumulation_steps 2 \
-    --lr_scheduler_type linear_schedule_with_warmup \
+    --lr_scheduler_type linear \
     --warmup_ratio 0.10 \
     --weight_decay 0.01 \
     --mlm_probability 0.15 \
-    --max_seq_length 1024 \
+    --max_seq_length ${MODEL_MAX_LENGTH} \
     --line_by_line \
     --pad_to_max_length
