@@ -2,6 +2,7 @@ import argparse
 
 import torch
 import copy
+from data import DATA_DIR
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerForSequenceClassification, \
     HiTransformerConfig, HiTransformerTokenizer
@@ -40,7 +41,7 @@ def convert_bert_to_htf():
 
     # load dummy config and change specifications
     bert_config = bert_model.config
-    htf_config = HiTransformerConfig.from_pretrained('../../data/hi-transformer')
+    htf_config = HiTransformerConfig.from_pretrained(f'{DATA_DIR}/data/hi-transformer')
     htf_config.max_sentence_length = MAX_SENTENCE_LENGTH
     htf_config.max_sentences = MAX_SENTENCES
     htf_config.num_hidden_layers = NUM_HIDDEN_LAYERS
@@ -89,14 +90,14 @@ def convert_bert_to_htf():
     # htf_model.lm_head.load_state_dict(bert_model.lm_head.state_dict())
 
     # save model
-    htf_model.save_pretrained(f'../../data/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
+    htf_model.save_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
 
     # save tokenizer
-    tokenizer.save_pretrained(f'../../data/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
+    tokenizer.save_pretrained(f'{DATA_DIR}/data/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
 
     # re-load model
-    htf_model = HiTransformerForSequenceClassification.from_pretrained(f'../../data/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
-    htf_tokenizer = HiTransformerTokenizer.from_pretrained(f'../../data/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
+    htf_model = HiTransformerForSequenceClassification.from_pretrained(f'{DATA_DIR}/data/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
+    htf_tokenizer = HiTransformerTokenizer.from_pretrained(f'{DATA_DIR}/data/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
     print(f'Hi-transformer model with layout {config.layout} and warm-up strategy {config.warmup_strategy} is ready to run!')
 
 
