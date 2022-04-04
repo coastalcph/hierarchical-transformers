@@ -35,20 +35,22 @@ class DatasetConfig(datasets.BuilderConfig):
         self.data_file = f'{self.name}.jsonl'
 
 
-class ToyDataset(datasets.GeneratorBasedBuilder):
-    """LexGLUE: A Benchmark Dataset for Legal Language Understanding in English. Version 1.0"""
+class EvaluationDataset(datasets.GeneratorBasedBuilder):
+    """Datasets. Version 1.0"""
 
     BUILDER_CONFIGS = [
         DatasetConfig(
-            name="wikipedia",
+            name="sentence_order_prediction",
         ),
         DatasetConfig(
-            name="eurlex",
+            name="masked_sentence_prediction",
         ),
     ]
 
     def _info(self):
-        features = {"text": datasets.Value("string")}
+        features = {"sentences": datasets.features.Sequence(datasets.Value("string")),
+                    "masked_sentence": datasets.Value("string"),
+                    "labels": datasets.Value("int")}
         return datasets.DatasetInfo(
             description=self.config.description,
             features=datasets.Features(features),

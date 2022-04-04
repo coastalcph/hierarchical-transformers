@@ -97,7 +97,7 @@ def convert_bert_to_htf():
     # re-load model
     htf_model = HiTransformerForSequenceClassification.from_pretrained(f'../../data/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
     htf_tokenizer = HiTransformerTokenizer.from_pretrained(f'../../data/PLMs/hi-transformer-bert-{config.layout}-{config.warmup_strategy}')
-    print('Model warm-up done!')
+    print(f'Hi-transformer model with layout {config.layout} and warm-up strategy {config.warmup_strategy} is ready to run!')
 
 
 if __name__ == '__main__':

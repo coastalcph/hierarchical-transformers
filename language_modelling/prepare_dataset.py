@@ -22,9 +22,19 @@ def main():
     for text in tqdm.tqdm(dataset['text']):
         text_length.append(text.split())
 
-    print(f'AVG: {np.mean(text_length):.1f} MAX: {np.max(text_length):.1f}')
+    # reduce to truncated size, max 4096
+    text_length = [x if x <= 4000 else 4096 for x in text_length]
 
-    plt.hist(text_length)
+    print(f'AVG: {np.mean(text_length):.1f} ± {np.std(text_length):.1f}, MAX: {np.max(text_length):.1f}')
+
+    # print stats in percentiles
+    for min_size in [512, 1024, 2048]:
+        n_docs = len([1 for x in text_length if x >= min_size])
+        perc = (n_docs * 100) / len(text_length)
+        print(f'No of document over {min_size} words: {n_docs}/{len(text_length)} ({perc:.1f}%)')
+
+    # plot document length histogram
+    plt.hist(text_length, range=(500, 4096), bins=50)
     plt.savefig(f'{config.dataset_name}_hist.png')
 
 
