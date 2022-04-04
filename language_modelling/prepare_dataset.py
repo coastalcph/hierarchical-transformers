@@ -20,7 +20,7 @@ def main():
 
     text_length = []
     for text in tqdm.tqdm(dataset['text']):
-        text_length.append(text.split())
+        text_length.append(len(text.split()))
 
     # reduce to truncated size, max 4096
     text_length = [x if x <= 4000 else 4096 for x in text_length]
