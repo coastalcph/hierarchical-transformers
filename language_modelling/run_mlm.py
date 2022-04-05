@@ -321,8 +321,8 @@ def main():
                 cache_dir=model_args.cache_dir,
             )
 
-    raw_datasets['train'] = raw_datasets['train'].remove_columns([column for column in raw_datasets.column_names['train'] if column != 'text'])
-    raw_datasets['validation'] = raw_datasets['validation'].remove_columns([column for column in raw_datasets.column_names['validation'] if column !='text'])
+    # raw_datasets['train'] = raw_datasets['train'].remove_columns([column for column in raw_datasets.column_names['train'] if column != 'text'])
+    # raw_datasets['validation'] = raw_datasets['validation'].remove_columns([column for column in raw_datasets.column_names['validation'] if column !='text'])
 
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
@@ -407,11 +407,11 @@ def main():
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
-    if training_args.do_train:
-        column_names = raw_datasets["train"].column_names
-    else:
-        column_names = raw_datasets["validation"].column_names
-    text_column_name = "text" if "text" in column_names else column_names[0]
+    # if training_args.do_train:
+    #     column_names = raw_datasets["train"].column_names
+    # else:
+    #     column_names = raw_datasets["validation"].column_names
+    text_column_name = "text" #if "text" in column_names else column_names[0]
 
     if data_args.max_seq_length is None:
         max_seq_length = tokenizer.model_max_length
@@ -505,9 +505,9 @@ def main():
             tokenized_datasets = tokenized_datasets.map(
                 group_texts,
                 batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc=f"Grouping texts in chunks of {max_seq_length}",
+                # num_proc=data_args.preprocessing_num_workers,
+                # load_from_cache_file=not data_args.overwrite_cache,
+                # desc=f"Grouping texts in chunks of {max_seq_length}",
             )
 
     if training_args.do_train:
