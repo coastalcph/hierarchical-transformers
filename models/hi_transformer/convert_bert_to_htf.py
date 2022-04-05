@@ -5,15 +5,14 @@ import copy
 import warnings
 from data import DATA_DIR
 from transformers import AutoModelForMaskedLM, AutoTokenizer
-from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerForSequenceClassification, \
-    HiTransformerConfig, HiTransformerTokenizer
+from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerConfig, HiTransformerTokenizer
 warnings.filterwarnings("ignore")
 
 LAYOUTS = {
     's1': 'SD|SD|SD|SD|SD|SD',
     'S2': 'S|SD|D|S|SD|D|S|SD|D',
     'p1': 'S|SD|S|SD|S|SD|S|SD',
-    'p2': 'S|SD|D|S|SD|D|S|SD|D'
+    'p2': 'S|S|SD|S|S|SD|S|S|SD',
 }
 
 
@@ -103,7 +102,7 @@ def convert_bert_to_htf():
     tokenizer.save_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-{config.warmup_strategy}')
 
     # re-load model
-    htf_model = HiTransformerForSequenceClassification.from_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-{config.warmup_strategy}')
+    htf_model = HiTransformerForMaskedLM.from_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-{config.warmup_strategy}')
     htf_tokenizer = HiTransformerTokenizer.from_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-{config.warmup_strategy}')
     print(f'Hi-transformer model with layout {config.layout} and warm-up strategy {config.warmup_strategy} is ready to run!')
 
