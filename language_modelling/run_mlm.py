@@ -515,7 +515,7 @@ def main():
             raise ValueError("--do_train requires a train dataset")
         train_dataset = tokenized_datasets["train"]
         if data_args.max_train_samples is not None:
-            max_train_samples = min(len(train_dataset), data_args.max_train_samples)
+            max_train_samples = data_args.max_train_samples
             train_dataset = train_dataset.select(range(max_train_samples))
 
     if training_args.do_eval:
@@ -523,7 +523,7 @@ def main():
             raise ValueError("--do_eval requires a validation dataset")
         eval_dataset = tokenized_datasets["validation"]
         if data_args.max_eval_samples is not None:
-            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
+            max_eval_samples = data_args.max_eval_samples
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
         def preprocess_logits_for_metrics(logits, labels):
