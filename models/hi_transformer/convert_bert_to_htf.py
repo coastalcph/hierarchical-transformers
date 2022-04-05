@@ -54,6 +54,7 @@ def convert_bert_to_htf():
     htf_config.intermediate_size = bert_config.intermediate_size
     htf_config.num_attention_heads = bert_config.num_attention_heads
     htf_config.hidden_act = bert_config.hidden_act
+    htf_config.encoder_layout = ENCODER_LAYOUT
     # Vocabulary parameters
     htf_config.vocab_size = bert_config.vocab_size
     htf_config.pad_token_id = bert_config.pad_token_id
