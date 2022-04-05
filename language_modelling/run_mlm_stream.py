@@ -275,6 +275,7 @@ def main():
             data_args.dataset_config_name,
             data_dir=data_args.dataset_name,
             cache_dir=model_args.cache_dir,
+            streaming=True
         )
         if "validation" not in raw_datasets.keys():
             raw_datasets["validation"] = load_dataset(
@@ -283,6 +284,7 @@ def main():
                 data_dir=data_args.dataset_name,
                 split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
+                streaming=True
             )
             raw_datasets["train"] = load_dataset(
                 data_args.dataset_name,
@@ -290,6 +292,7 @@ def main():
                 data_dir=data_args.dataset_name,
                 split=f"train[{data_args.validation_split_percentage}%:]",
                 cache_dir=model_args.cache_dir,
+                streaming=True
             )
     else:
         data_files = {}
@@ -318,8 +321,8 @@ def main():
                 cache_dir=model_args.cache_dir,
             )
 
-    raw_datasets['train'] = raw_datasets['train'].remove_columns([column for column in raw_datasets.column_names['train'] if column != 'text'])
-    raw_datasets['validation'] = raw_datasets['validation'].remove_columns([column for column in raw_datasets.column_names['validation'] if column !='text'])
+    # raw_datasets['train'] = raw_datasets['train'].remove_columns([column for column in raw_datasets.column_names['train'] if column != 'text'])
+    # raw_datasets['validation'] = raw_datasets['validation'].remove_columns([column for column in raw_datasets.column_names['validation'] if column !='text'])
 
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
@@ -404,11 +407,11 @@ def main():
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
-    if training_args.do_train:
-        column_names = raw_datasets["train"].column_names
-    else:
-        column_names = raw_datasets["validation"].column_names
-    text_column_name = "text" if "text" in column_names else column_names[0]
+    # if training_args.do_train:
+    #     column_names = raw_datasets["train"].column_names
+    # else:
+    #     column_names = raw_datasets["validation"].column_names
+    text_column_name = "text" #if "text" in column_names else column_names[0]
 
     if data_args.max_seq_length is None:
         max_seq_length = tokenizer.model_max_length
@@ -450,10 +453,10 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=[text_column_name],
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on dataset line_by_line",
+                # num_proc=data_args.preprocessing_num_workers,
+                # remove_columns=[text_column_name],
+                # load_from_cache_file=not data_args.overwrite_cache,
+                # desc="Running tokenizer on dataset line_by_line",
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -468,10 +471,10 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=column_names,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on every text in dataset",
+                # num_proc=data_args.preprocessing_num_workers,
+                # remove_columns=column_names,
+                # load_from_cache_file=not data_args.overwrite_cache,
+                # desc="Running tokenizer on every text in dataset",
             )
 
         # Main data processing function that will concatenate all texts from our dataset and generate chunks of
@@ -502,9 +505,9 @@ def main():
             tokenized_datasets = tokenized_datasets.map(
                 group_texts,
                 batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc=f"Grouping texts in chunks of {max_seq_length}",
+                # num_proc=data_args.preprocessing_num_workers,
+                # load_from_cache_file=not data_args.overwrite_cache,
+                # desc=f"Grouping texts in chunks of {max_seq_length}",
             )
 
     if training_args.do_train:
@@ -512,7 +515,7 @@ def main():
             raise ValueError("--do_train requires a train dataset")
         train_dataset = tokenized_datasets["train"]
         if data_args.max_train_samples is not None:
-            max_train_samples = min(len(train_dataset), data_args.max_train_samples)
+            max_train_samples = data_args.max_train_samples
             train_dataset = train_dataset.select(range(max_train_samples))
 
     if training_args.do_eval:
@@ -520,7 +523,7 @@ def main():
             raise ValueError("--do_eval requires a validation dataset")
         eval_dataset = tokenized_datasets["validation"]
         if data_args.max_eval_samples is not None:
-            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
+            max_eval_samples = data_args.max_eval_samples
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
         def preprocess_logits_for_metrics(logits, labels):
