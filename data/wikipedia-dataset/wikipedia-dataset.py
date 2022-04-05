@@ -102,22 +102,28 @@ class Wikipedia(datasets.GeneratorBasedBuilder):
         )
 
     def _split_generators(self, dl_manager):
-        data_dir = dl_manager.download_and_extract(os.path.join('./', f'wikipedia.{self.config.dump}.tar.gz'))
+        data_dir = dl_manager.download(os.path.join('./', f'wikipedia.{self.config.dump}.tar.gz'))
         return [
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
                 # These kwargs will be passed to _generate_examples
-                gen_kwargs={"filepath": os.path.join(data_dir, 'train.jsonl'), "split": "train"},
+                gen_kwargs={"filepath": 'train.jsonl',
+                            "split": "train",
+                            "files": dl_manager.iter_archive(data_dir)},
             ),
             datasets.SplitGenerator(
                 name=datasets.Split.TEST,
                 # These kwargs will be passed to _generate_examples
-                gen_kwargs={"filepath": os.path.join(data_dir, 'test.jsonl'), "split": "test"},
+                gen_kwargs={"filepath": 'test.jsonl',
+                            "split": "test",
+                            "files": dl_manager.iter_archive(data_dir)},
             ),
             datasets.SplitGenerator(
                 name=datasets.Split.VALIDATION,
                 # These kwargs will be passed to _generate_examples
-                gen_kwargs={"filepath": os.path.join(data_dir, 'dev.jsonl'), "split": "validation"},
+                gen_kwargs={"filepath": 'dev.jsonl',
+                            "split": "validation",
+                            "files": dl_manager.iter_archive(data_dir)},
             ),
         ]
 

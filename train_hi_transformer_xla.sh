@@ -4,7 +4,7 @@ export PYTHONPATH=.
 
 XLA_IR_DEBUG=1 python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm.py \
     --config_name data/hi-transformer \
-    --dataset_name data/wikipedia-dataset \
+    --dataset_name ./data/wikipedia-dataset \
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
