@@ -127,12 +127,14 @@ class Wikipedia(datasets.GeneratorBasedBuilder):
             ),
         ]
 
-    def _generate_examples(self, filepath, split):
+    def _generate_examples(self, filepath, split, files):
         """This function returns the examples in the raw (text) form."""
         with open(filepath, "r", encoding="utf-8") as f:
-            for id_, row in enumerate(f):
-                data = json.loads(row)
-                yield id_, {
-                    "title": data['title'],
-                    "text": data['text'],
-                }
+            for path, f in files:
+                if path == filepath:
+                    for id_, row in enumerate(f):
+                        data = json.loads(row)
+                        yield id_, {
+                            "title": data['title'],
+                            "text": data['text'],
+                        }
