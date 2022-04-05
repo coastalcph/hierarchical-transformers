@@ -456,7 +456,7 @@ def main():
                 # num_proc=data_args.preprocessing_num_workers,
                 # remove_columns=[text_column_name],
                 # load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on dataset line_by_line",
+                # desc="Running tokenizer on dataset line_by_line",
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -474,7 +474,7 @@ def main():
                 # num_proc=data_args.preprocessing_num_workers,
                 # remove_columns=column_names,
                 # load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on every text in dataset",
+                # desc="Running tokenizer on every text in dataset",
             )
 
         # Main data processing function that will concatenate all texts from our dataset and generate chunks of
