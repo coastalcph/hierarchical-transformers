@@ -17,9 +17,9 @@ import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Union
 
-from ..file_utils import PaddingStrategy
-from ..models.bert import BertTokenizer, BertTokenizerFast
-from ..tokenization_utils_base import BatchEncoding, PreTrainedTokenizerBase
+from transformers.file_utils import PaddingStrategy
+from transformers.models.bert import BertTokenizer, BertTokenizerFast
+from transformers.tokenization_utils_base import BatchEncoding, PreTrainedTokenizerBase
 
 
 InputDataClass = NewType("InputDataClass", Any)
