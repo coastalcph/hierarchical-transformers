@@ -39,13 +39,13 @@ from transformers import (
     AutoConfig,
     AutoModelForMaskedLM,
     AutoTokenizer,
-    DataCollatorForLanguageModeling,
     HfArgumentParser,
     Trainer,
     TrainingArguments,
     is_torch_tpu_available,
     set_seed,
 )
+from language_modelling.data_collator import DataCollatorForLanguageModeling
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
