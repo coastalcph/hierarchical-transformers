@@ -48,7 +48,6 @@ _LICENSE = (
     "Creative Commons, PO Box 1866, Mountain View, CA 94042, USA."
 )
 
-WIKIPEDIA_LANGUAGES = ["en"]
 _VERSION = datasets.Version("1.0.0", "")
 
 
@@ -83,8 +82,7 @@ class Wikipedia(datasets.GeneratorBasedBuilder):
     BUILDER_CONFIG_CLASS = WikipediaConfig
     BUILDER_CONFIGS = [
         WikipediaConfig(
-            language="en",
-            date=_DATE,
+            dump="20200501.en",
         )  # pylint:disable=g-complex-comprehension
     ]
 
@@ -104,7 +102,7 @@ class Wikipedia(datasets.GeneratorBasedBuilder):
         )
 
     def _split_generators(self, dl_manager):
-        data_dir = dl_manager.download_and_extract(os.path.join('./', f'{self.config.dump}.tar.gz'))
+        data_dir = dl_manager.download_and_extract(os.path.join('./', f'wikipedia.{self.config.dump}.tar.gz'))
         return [
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
