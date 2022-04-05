@@ -2,11 +2,12 @@ import argparse
 
 import torch
 import copy
+import warnings
 from data import DATA_DIR
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerForSequenceClassification, \
     HiTransformerConfig, HiTransformerTokenizer
-
+warnings.filterwarnings("ignore")
 
 LAYOUTS = {
     's1': 'SD|SD|SD|SD|SD|SD',
@@ -43,13 +44,18 @@ def convert_bert_to_htf():
     # load dummy config and change specifications
     bert_config = bert_model.config
     htf_config = HiTransformerConfig.from_pretrained(f'{DATA_DIR}/hi-transformer')
+    # Text length parameters
     htf_config.max_sentence_length = MAX_SENTENCE_LENGTH
     htf_config.max_sentences = MAX_SENTENCES
-    htf_config.num_hidden_layers = NUM_HIDDEN_LAYERS
-    htf_config.hidden_size = bert_config.hidden_size
-    htf_config.intermediate_size = bert_config.intermediate_size
     htf_config.max_position_embeddings = MAX_SENTENCE_LENGTH
     htf_config.model_max_length = MAX_SENTENCE_LENGTH * MAX_SENTENCES
+    htf_config.num_hidden_layers = NUM_HIDDEN_LAYERS
+    # Transformer parameters
+    htf_config.hidden_size = bert_config.hidden_size
+    htf_config.intermediate_size = bert_config.intermediate_size
+    htf_config.num_attention_heads = bert_config.num_attention_heads
+    htf_config.hidden_act = bert_config.hidden_act
+    # Vocabulary parameters
     htf_config.vocab_size = bert_config.vocab_size
     htf_config.pad_token_id = bert_config.pad_token_id
     htf_config.bos_token_id = bert_config.bos_token_id
