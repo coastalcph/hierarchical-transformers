@@ -27,7 +27,7 @@ def convert_bert_to_htf():
     parser.add_argument('--max_sentences', default=8)
     config = parser.parse_args()
     MAX_SENTENCE_LENGTH = 128
-    MAX_SENTENCES = config.max_sentences
+    MAX_SENTENCES = int(config.max_sentences)
     ENCODER_LAYOUT = {}
     for idx, block_pattern in enumerate(LAYOUTS[config.layout].split('|')):
         ENCODER_LAYOUT[str(idx)] = {"sentence_encoder": True if 'S' in block_pattern else False,
@@ -48,7 +48,7 @@ def convert_bert_to_htf():
     htf_config.max_sentence_length = MAX_SENTENCE_LENGTH
     htf_config.max_sentences = MAX_SENTENCES
     htf_config.max_position_embeddings = MAX_SENTENCE_LENGTH
-    htf_config.model_max_length = MAX_SENTENCE_LENGTH * MAX_SENTENCES
+    htf_config.model_max_length = int(MAX_SENTENCE_LENGTH * MAX_SENTENCES)
     htf_config.num_hidden_layers = NUM_HIDDEN_LAYERS
     # Transformer parameters
     htf_config.hidden_size = bert_config.hidden_size
