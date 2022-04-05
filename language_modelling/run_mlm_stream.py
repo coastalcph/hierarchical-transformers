@@ -407,11 +407,7 @@ def main():
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
-    # if training_args.do_train:
-    #     column_names = raw_datasets["train"].column_names
-    # else:
-    #     column_names = raw_datasets["validation"].column_names
-    text_column_name = "text" #if "text" in column_names else column_names[0]
+    text_column_name = "text"
 
     if data_args.max_seq_length is None:
         max_seq_length = tokenizer.model_max_length
@@ -452,11 +448,7 @@ def main():
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
-                batched=True,
-                # num_proc=data_args.preprocessing_num_workers,
-                # remove_columns=[text_column_name],
-                # load_from_cache_file=not data_args.overwrite_cache,
-                # desc="Running tokenizer on dataset line_by_line",
+                batched=True
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -470,11 +462,7 @@ def main():
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
-                batched=True,
-                # num_proc=data_args.preprocessing_num_workers,
-                # remove_columns=column_names,
-                # load_from_cache_file=not data_args.overwrite_cache,
-                # desc="Running tokenizer on every text in dataset",
+                batched=True
             )
 
         # Main data processing function that will concatenate all texts from our dataset and generate chunks of
@@ -504,10 +492,7 @@ def main():
         with training_args.main_process_first(desc="grouping texts together"):
             tokenized_datasets = tokenized_datasets.map(
                 group_texts,
-                batched=True,
-                # num_proc=data_args.preprocessing_num_workers,
-                # load_from_cache_file=not data_args.overwrite_cache,
-                # desc=f"Grouping texts in chunks of {max_seq_length}",
+                batched=True
             )
 
     if training_args.do_train:
@@ -516,7 +501,7 @@ def main():
         train_dataset = tokenized_datasets["train"]
         if data_args.max_train_samples is not None:
             max_train_samples = data_args.max_train_samples
-            train_dataset = train_dataset.select(range(max_train_samples))
+            train_dataset = train_dataset.take(max_train_samples)
 
     if training_args.do_eval:
         if "validation" not in tokenized_datasets:
@@ -524,7 +509,7 @@ def main():
         eval_dataset = tokenized_datasets["validation"]
         if data_args.max_eval_samples is not None:
             max_eval_samples = data_args.max_eval_samples
-            eval_dataset = eval_dataset.select(range(max_eval_samples))
+            eval_dataset = eval_dataset.take(range(max_eval_samples))
 
         def preprocess_logits_for_metrics(logits, labels):
             if isinstance(logits, tuple):
