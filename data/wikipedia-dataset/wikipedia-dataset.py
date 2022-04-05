@@ -91,7 +91,6 @@ class Wikipedia(datasets.GeneratorBasedBuilder):
             description=_DESCRIPTION,
             features=datasets.Features(
                 {
-                    "title": datasets.Value("string"),
                     "text": datasets.Value("string"),
                 }
             ),
@@ -134,6 +133,5 @@ class Wikipedia(datasets.GeneratorBasedBuilder):
                 for id_, row in enumerate(f):
                         data = json.loads(row)
                         yield id_, {
-                            "title": data['title'],
                             "text": data['text'],
                         }

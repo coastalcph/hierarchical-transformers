@@ -321,6 +321,7 @@ def main():
                 cache_dir=model_args.cache_dir,
             )
 
+    raw_datasets = raw_datasets.with_format("torch")
     # raw_datasets['train'] = raw_datasets['train'].remove_columns([column for column in raw_datasets.column_names['train'] if column != 'text'])
     # raw_datasets['validation'] = raw_datasets['validation'].remove_columns([column for column in raw_datasets.column_names['validation'] if column !='text'])
 
@@ -448,7 +449,8 @@ def main():
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
-                batched=True
+                batched=True,
+                remove_columns=["text"],
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -462,7 +464,8 @@ def main():
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
-                batched=True
+                batched=True,
+                remove_columns=["text"],
             )
 
         # Main data processing function that will concatenate all texts from our dataset and generate chunks of
@@ -492,7 +495,8 @@ def main():
         with training_args.main_process_first(desc="grouping texts together"):
             tokenized_datasets = tokenized_datasets.map(
                 group_texts,
-                batched=True
+                batched=True,
+                remove_columns=["text"],
             )
 
     if training_args.do_train:
@@ -509,7 +513,7 @@ def main():
         eval_dataset = tokenized_datasets["validation"]
         if data_args.max_eval_samples is not None:
             max_eval_samples = data_args.max_eval_samples
-            eval_dataset = eval_dataset.take(range(max_eval_samples))
+            eval_dataset = eval_dataset.take(max_eval_samples)
 
         def preprocess_logits_for_metrics(logits, labels):
             if isinstance(logits, tuple):
@@ -565,10 +569,10 @@ def main():
         trainer.save_model()  # Saves the tokenizer too for easy upload
         metrics = train_result.metrics
 
-        max_train_samples = (
-            data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
-        )
-        metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+        #max_train_samples = (
+        #    data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
+        #)
+        #metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
@@ -580,8 +584,8 @@ def main():
 
         metrics = trainer.evaluate()
 
-        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+        #max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+        #metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         try:
             perplexity = math.exp(metrics["eval_loss"])
         except OverflowError:
