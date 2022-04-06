@@ -88,11 +88,11 @@ def convert_bert_to_htf():
                         htf_model.hi_transformer.encoder.layer[idx].document_encoder.load_state_dict(bert_model.bert.encoder.layer[idx].state_dict())
                     htf_model.hi_transformer.encoder.layer[idx].position_embeddings.weight.data = bert_model.bert.embeddings.position_embeddings.weight[1:MAX_SENTENCES+2]
         else:
-            for idx in range(0, NUM_HIDDEN_LAYERS*2, 2):
+            for idx, l_idx in enumerate(range(0, NUM_HIDDEN_LAYERS*2, 2)):
                 if htf_model.config.encoder_layout[str(idx)]['sentence_encoder']:
-                    htf_model.hi_transformer.encoder.layer[idx].sentence_encoder.load_state_dict(bert_model.bert.encoder.layer[idx].state_dict())
+                    htf_model.hi_transformer.encoder.layer[idx].sentence_encoder.load_state_dict(bert_model.bert.encoder.layer[l_idx].state_dict())
                 if htf_model.config.encoder_layout[str(idx)]['document_encoder']:
-                    htf_model.hi_transformer.encoder.layer[idx].document_encoder.load_state_dict(bert_model.bert.encoder.layer[idx+1].state_dict())
+                    htf_model.hi_transformer.encoder.layer[idx].document_encoder.load_state_dict(bert_model.bert.encoder.layer[l_idx+1].state_dict())
                     htf_model.hi_transformer.encoder.layer[idx].position_embeddings.weight.data = bert_model.bert.embeddings.position_embeddings.weight[1:MAX_SENTENCES+2]
 
     # copy lm_head
