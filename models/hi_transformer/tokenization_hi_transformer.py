@@ -146,7 +146,7 @@ class HiTransformerTokenizer:
                                                      chunk_size=self.config.max_sentence_length,
                                                      special_id=self.type2id[input_type]))
                     tmp_sentence = example if len(tmp_sentence) else example[self.config.max_sentence_length:]
-            if len(tmp_sentence):
+            if len(tmp_sentence) and len(tmp_doc) < self.config.max_sentences:
                 tmp_doc.append(self.pad_sentence(tmp_sentence,
                                                  chunk_size=self.config.max_sentence_length,
                                                  special_id=self.type2id[input_type]))
