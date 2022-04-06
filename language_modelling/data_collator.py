@@ -733,11 +733,17 @@ class DataCollatorForLanguageModeling(DataCollatorMixin):
                 "input_ids": _torch_collate_batch(examples, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
             }
 
+        # Fix dtype of model inputs
+        batch['input_ids'] = batch['input_ids'].to(torch.long)
+        if 'token_type_ids' in batch:
+            batch['token_type_ids'] = batch['token_type_ids'].to(torch.long)
+        batch['attention_mask'] = batch['attention_mask'].to(torch.long)
+
         # If special token mask has been preprocessed, pop it from the dict.
         special_tokens_mask = batch.pop("special_tokens_mask", None)
         if self.mlm:
             batch["input_ids"], batch["labels"] = self.torch_mask_tokens(
-                batch["input_ids"].to(torch.long), special_tokens_mask=special_tokens_mask
+                batch["input_ids"], special_tokens_mask=special_tokens_mask
             )
         else:
             labels = batch["input_ids"].clone()
@@ -867,6 +873,11 @@ class DataCollatorForWholeWordMask(DataCollatorForLanguageModeling):
             examples = [{"input_ids": e} for e in examples]
 
         batch_input = _torch_collate_batch(input_ids, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
+        # Fix dtype of model inputs
+        batch_input['input_ids'] = batch_input['input_ids'].to(torch.long)
+        if 'token_type_ids' in batch_input:
+            batch_input['token_type_ids'] = batch_input['token_type_ids'].to(torch.long)
+        batch_input['attention_mask'] = batch_input['attention_mask'].to(torch.long)
 
         mask_labels = []
         for e in examples:
@@ -884,7 +895,7 @@ class DataCollatorForWholeWordMask(DataCollatorForLanguageModeling):
                         ref_tokens[i] = "##" + ref_tokens[i]
             mask_labels.append(self._whole_word_mask(ref_tokens))
         batch_mask = _torch_collate_batch(mask_labels, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
-        inputs, labels = self.torch_mask_tokens(batch_input.to(torch.long), batch_mask)
+        inputs, labels = self.torch_mask_tokens(batch_input, batch_mask)
         return {"input_ids": inputs, "labels": labels}
 
     def tf_call(self, examples: List[Union[List[int], Any, Dict[str, Any]]]) -> Dict[str, Any]:
