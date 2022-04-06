@@ -17,6 +17,7 @@ import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Union
 
+import torch
 from transformers.file_utils import PaddingStrategy
 from transformers.models.bert import BertTokenizer, BertTokenizerFast
 from transformers.tokenization_utils_base import BatchEncoding, PreTrainedTokenizerBase
@@ -736,7 +737,7 @@ class DataCollatorForLanguageModeling(DataCollatorMixin):
         special_tokens_mask = batch.pop("special_tokens_mask", None)
         if self.mlm:
             batch["input_ids"], batch["labels"] = self.torch_mask_tokens(
-                batch["input_ids"], special_tokens_mask=special_tokens_mask
+                batch["input_ids"].to(torch.long), special_tokens_mask=special_tokens_mask
             )
         else:
             labels = batch["input_ids"].clone()
@@ -768,7 +769,7 @@ class DataCollatorForLanguageModeling(DataCollatorMixin):
 
         # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
         indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.9)).bool() & masked_indices
-        inputs[indices_replaced] = int(self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token))
+        inputs[indices_replaced] = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
 
         # 10% of the time, we replace masked input tokens with random word
         indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
@@ -883,7 +884,7 @@ class DataCollatorForWholeWordMask(DataCollatorForLanguageModeling):
                         ref_tokens[i] = "##" + ref_tokens[i]
             mask_labels.append(self._whole_word_mask(ref_tokens))
         batch_mask = _torch_collate_batch(mask_labels, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
-        inputs, labels = self.torch_mask_tokens(batch_input, batch_mask)
+        inputs, labels = self.torch_mask_tokens(batch_input.to(torch.long), batch_mask)
         return {"input_ids": inputs, "labels": labels}
 
     def tf_call(self, examples: List[Union[List[int], Any, Dict[str, Any]]]) -> Dict[str, Any]:
@@ -1018,7 +1019,7 @@ class DataCollatorForWholeWordMask(DataCollatorForLanguageModeling):
 
         # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
         indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.9)).bool() & masked_indices
-        inputs[indices_replaced] = int(self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token))
+        inputs[indices_replaced] = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
 
         # 10% of the time, we replace masked input tokens with random word
         indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
