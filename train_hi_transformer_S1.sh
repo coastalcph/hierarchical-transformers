@@ -26,10 +26,10 @@ python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm
     --save_total_limit 5 \
     --max_steps 50000 \
     --learning_rate 1e-4 \
-    --per_device_train_batch_size 8 \
-    --per_device_eval_batch_size 8 \
-    --gradient_accumulation_steps 2 \
-    --eval_accumulation_steps 2 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --gradient_accumulation_steps 4 \
+    --eval_accumulation_steps 4 \
     --lr_scheduler_type linear \
     --warmup_ratio 0.10 \
     --weight_decay 0.01 \
