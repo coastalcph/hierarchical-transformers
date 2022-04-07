@@ -95,8 +95,8 @@ def convert_bert_to_htf():
 
 
     # check position ids
-    batch = tokenizer(['this is a dog', 'this is a cat'], return_tensors='pt')
-    lf_model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'])
+    # batch = tokenizer(['this is a dog', 'this is a cat'], return_tensors='pt')
+    # lf_model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'])
 
     # save model
     lf_model.save_pretrained(f'{DATA_DIR}/PLMs/longformer')
