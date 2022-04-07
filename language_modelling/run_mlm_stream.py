@@ -30,8 +30,6 @@ from itertools import chain
 from typing import Optional
 
 import datasets
-import numpy as np
-import torch
 from datasets import load_dataset, load_metric
 
 import transformers
@@ -41,7 +39,6 @@ from transformers import (
     AutoConfig,
     AutoModelForMaskedLM,
     AutoTokenizer,
-    DataCollatorForLanguageModeling,
     HfArgumentParser,
     Trainer,
     TrainingArguments,
@@ -53,6 +50,7 @@ from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerTokenizer, HiTransformerConfig
 from models.longformer import LongformerForMaskedLM
+from language_modelling.data_collator import DataCollatorForLanguageModeling
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.15.0")
@@ -464,7 +462,7 @@ def main():
                 examples[text_column_name] = [
                     line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
                 ]
-                batch = tokenizer(
+                return tokenizer(
                     examples[text_column_name],
                     padding=padding,
                     truncation=True,
@@ -473,12 +471,6 @@ def main():
                     # receives the `special_tokens_mask`.
                     return_special_tokens_mask=True,
                 )
-                if config.model_type == 'longformer':
-                    global_attention_mask = np.zeros_like(batch['input_ids'], dtype=np.int)
-                    # global attention on cls token
-                    global_attention_mask[:, 0] = 1
-                    batch['global_attention_mask'] = list(global_attention_mask)
-                    return batch
 
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(

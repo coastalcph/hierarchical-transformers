@@ -750,6 +750,13 @@ class DataCollatorForLanguageModeling(DataCollatorMixin):
             if self.tokenizer.pad_token_id is not None:
                 labels[labels == self.tokenizer.pad_token_id] = -100
             batch["labels"] = labels
+
+        # create global mask
+        global_attention_mask = torch.zeros_like(batch['input_ids'], dtype=batch['input_ids'].dtype)
+        # global attention on cls token
+        global_attention_mask[:, 0] = 1
+        batch['global_attention_mask'] = global_attention_mask
+
         return batch
 
     def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None) -> Tuple[Any, Any]:
