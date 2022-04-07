@@ -30,6 +30,7 @@ from itertools import chain
 from typing import Optional
 
 import datasets
+import torch
 from datasets import load_dataset, load_metric
 
 import transformers
@@ -462,7 +463,7 @@ def main():
                 examples[text_column_name] = [
                     line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
                 ]
-                return tokenizer(
+                batch = tokenizer(
                     examples[text_column_name],
                     padding=padding,
                     truncation=True,
@@ -471,6 +472,12 @@ def main():
                     # receives the `special_tokens_mask`.
                     return_special_tokens_mask=True,
                 )
+                if config.model_type == 'longformer':
+                    global_attention_mask = torch.zeros_like(batch['input_ids'], dtype=batch['input_ids'].dtype)
+                    # global attention on cls token
+                    global_attention_mask[:, 0] = 1
+                    batch['global_attention_mask'] = global_attention_mask
+                    return batch
 
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(

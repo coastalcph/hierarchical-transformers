@@ -1,1 +1,1 @@
-from modeling_longformer import LongformerForSequenceClassification, LongformerForMaskedLM
+from .modeling_longformer import LongformerForSequenceClassification, LongformerForMaskedLM
