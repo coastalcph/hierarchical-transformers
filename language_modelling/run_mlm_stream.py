@@ -50,7 +50,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerTokenizer, HiTransformerConfig
-
+from models.longformer import LongformerForMaskedLM
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.15.0")
@@ -387,6 +387,15 @@ def main():
                 revision=model_args.model_revision,
                 use_auth_token=True if model_args.use_auth_token else None,
             )
+        elif config.model_type == 'longformer':
+            model = LongformerForMaskedLM.from_pretrained(
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
+                config=config,
+                cache_dir=model_args.cache_dir,
+                revision=model_args.model_revision,
+                use_auth_token=True if model_args.use_auth_token else None,
+            )
         else:
             model = AutoModelForMaskedLM.from_pretrained(
                 model_args.model_name_or_path,
@@ -400,6 +409,8 @@ def main():
         logger.info("Training new model from scratch")
         if config.model_type == 'hi-transformer':
             model = HiTransformerForMaskedLM.from_config(config)
+        elif config.model_type == 'longformer':
+            model = LongformerForMaskedLM.from_config(config)
         else:
             model = AutoModelForMaskedLM.from_config(config)
 
