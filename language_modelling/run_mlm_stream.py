@@ -30,6 +30,7 @@ from itertools import chain
 from typing import Optional
 
 import datasets
+import numpy as np
 import torch
 from datasets import load_dataset, load_metric
 
@@ -473,10 +474,10 @@ def main():
                     return_special_tokens_mask=True,
                 )
                 if config.model_type == 'longformer':
-                    global_attention_mask = torch.zeros_like(batch['input_ids'], dtype=batch['input_ids'].dtype)
+                    global_attention_mask = np.zeros_like(batch['input_ids'], dtype=np.int)
                     # global attention on cls token
                     global_attention_mask[:, 0] = 1
-                    batch['global_attention_mask'] = global_attention_mask
+                    batch['global_attention_mask'] = list(global_attention_mask)
                     return batch
 
         with training_args.main_process_first(desc="dataset map tokenization"):
