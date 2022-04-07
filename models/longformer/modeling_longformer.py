@@ -1688,6 +1688,10 @@ class LongformerModel(LongformerPreTrainedModel):
         if token_type_ids is None:
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
+        if global_attention_mask is None:
+            global_attention_mask = torch.zeros(input_shape, dtype=torch.long, device=device)
+            global_attention_mask[:, 0] = 1
+
         # merge `global_attention_mask` and `attention_mask`
         if global_attention_mask is not None:
             attention_mask = self._merge_to_attention_mask(attention_mask, global_attention_mask)

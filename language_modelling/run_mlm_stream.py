@@ -39,6 +39,7 @@ from transformers import (
     AutoConfig,
     AutoModelForMaskedLM,
     AutoTokenizer,
+    DataCollatorForLanguageModeling,
     HfArgumentParser,
     Trainer,
     TrainingArguments,
@@ -50,7 +51,6 @@ from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerTokenizer, HiTransformerConfig
 from models.longformer import LongformerForMaskedLM
-from language_modelling.data_collator import DataCollatorForLanguageModeling
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.15.0")
