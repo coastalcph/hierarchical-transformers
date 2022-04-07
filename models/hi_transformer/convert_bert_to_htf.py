@@ -21,11 +21,12 @@ def convert_bert_to_htf():
     parser = argparse.ArgumentParser()
 
     # Required arguments
-    parser.add_argument('--warmup_strategy', default='grouped', choices=['linear', 'grouped', 'random', 'embeds-only'],
+    parser.add_argument('--warmup_strategy', default='grouped', choices=['linear', 'grouped', 'random', 'embeds-only', 'none'],
                         help='linear: S|D encoders are warm-started independently (one-by-one)'
                              'grouped: pairs of S|D are warm-started with weights from the very same level'
                              'random: D encoders are not warm-started'
-                             'embeds-only: No warm-starting, except embeddings')
+                             'embeds-only: No warm-starting, except embeddings'
+                             'none: No warm-starting')
     parser.add_argument('--layout', default='s1', choices=['s1', 's2', 'p1', 'p2'],
                         help='S|D encoders layout')
     parser.add_argument('--max_sentences', default=8)
@@ -70,37 +71,38 @@ def convert_bert_to_htf():
     # load dummy hi-transformer model
     htf_model = HiTransformerForMaskedLM.from_config(htf_config)
 
-    # copy embeddings
-    htf_model.hi_transformer.embeddings.position_embeddings.weight.data[0] = torch.zeros((bert_config.hidden_size,))
-    htf_model.hi_transformer.embeddings.position_embeddings.weight.data[1:] = bert_model.bert.embeddings.position_embeddings.weight[1:MAX_SENTENCE_LENGTH+htf_config.pad_token_id+1]
-    htf_model.hi_transformer.embeddings.word_embeddings.load_state_dict(bert_model.bert.embeddings.word_embeddings.state_dict())
-    htf_model.hi_transformer.embeddings.token_type_embeddings.load_state_dict(bert_model.bert.embeddings.token_type_embeddings.state_dict())
-    htf_model.hi_transformer.embeddings.LayerNorm.load_state_dict(bert_model.bert.embeddings.LayerNorm.state_dict())
+    if config.warmup_strategy != 'none':
+        # copy embeddings
+        htf_model.hi_transformer.embeddings.position_embeddings.weight.data[0] = torch.zeros((bert_config.hidden_size,))
+        htf_model.hi_transformer.embeddings.position_embeddings.weight.data[1:] = bert_model.bert.embeddings.position_embeddings.weight[1:MAX_SENTENCE_LENGTH+htf_config.pad_token_id+1]
+        htf_model.hi_transformer.embeddings.word_embeddings.load_state_dict(bert_model.bert.embeddings.word_embeddings.state_dict())
+        htf_model.hi_transformer.embeddings.token_type_embeddings.load_state_dict(bert_model.bert.embeddings.token_type_embeddings.state_dict())
+        htf_model.hi_transformer.embeddings.LayerNorm.load_state_dict(bert_model.bert.embeddings.LayerNorm.state_dict())
 
-    if config.warmup_strategy != 'embeds-only':
-        # copy transformer layers
-        if config.warmup_strategy != 'linear':
-            for idx in range(NUM_HIDDEN_LAYERS):
-                if htf_model.config.encoder_layout[str(idx)]['sentence_encoder']:
-                    htf_model.hi_transformer.encoder.layer[idx].sentence_encoder.load_state_dict(bert_model.bert.encoder.layer[idx].state_dict())
-                if htf_model.config.encoder_layout[str(idx)]['document_encoder']:
-                    if config.warmup_strategy == 'grouped':
-                        htf_model.hi_transformer.encoder.layer[idx].document_encoder.load_state_dict(bert_model.bert.encoder.layer[idx].state_dict())
-                    htf_model.hi_transformer.encoder.layer[idx].position_embeddings.weight.data = bert_model.bert.embeddings.position_embeddings.weight[1:MAX_SENTENCES+2]
-        else:
-            for idx, l_idx in enumerate(range(0, NUM_HIDDEN_LAYERS*2, 2)):
-                if htf_model.config.encoder_layout[str(idx)]['sentence_encoder']:
-                    htf_model.hi_transformer.encoder.layer[idx].sentence_encoder.load_state_dict(bert_model.bert.encoder.layer[l_idx].state_dict())
-                if htf_model.config.encoder_layout[str(idx)]['document_encoder']:
-                    htf_model.hi_transformer.encoder.layer[idx].document_encoder.load_state_dict(bert_model.bert.encoder.layer[l_idx+1].state_dict())
-                    htf_model.hi_transformer.encoder.layer[idx].position_embeddings.weight.data = bert_model.bert.embeddings.position_embeddings.weight[1:MAX_SENTENCES+2]
+        if config.warmup_strategy != 'embeds-only':
+            # copy transformer layers
+            if config.warmup_strategy != 'linear':
+                for idx in range(NUM_HIDDEN_LAYERS):
+                    if htf_model.config.encoder_layout[str(idx)]['sentence_encoder']:
+                        htf_model.hi_transformer.encoder.layer[idx].sentence_encoder.load_state_dict(bert_model.bert.encoder.layer[idx].state_dict())
+                    if htf_model.config.encoder_layout[str(idx)]['document_encoder']:
+                        if config.warmup_strategy == 'grouped':
+                            htf_model.hi_transformer.encoder.layer[idx].document_encoder.load_state_dict(bert_model.bert.encoder.layer[idx].state_dict())
+                        htf_model.hi_transformer.encoder.layer[idx].position_embeddings.weight.data = bert_model.bert.embeddings.position_embeddings.weight[1:MAX_SENTENCES+2]
+            else:
+                for idx, l_idx in enumerate(range(0, NUM_HIDDEN_LAYERS*2, 2)):
+                    if htf_model.config.encoder_layout[str(idx)]['sentence_encoder']:
+                        htf_model.hi_transformer.encoder.layer[idx].sentence_encoder.load_state_dict(bert_model.bert.encoder.layer[l_idx].state_dict())
+                    if htf_model.config.encoder_layout[str(idx)]['document_encoder']:
+                        htf_model.hi_transformer.encoder.layer[idx].document_encoder.load_state_dict(bert_model.bert.encoder.layer[l_idx+1].state_dict())
+                        htf_model.hi_transformer.encoder.layer[idx].position_embeddings.weight.data = bert_model.bert.embeddings.position_embeddings.weight[1:MAX_SENTENCES+2]
 
-    # copy lm_head
-    htf_model.lm_head.dense.load_state_dict(bert_model.cls.predictions.transform.dense.state_dict())
-    htf_model.lm_head.layer_norm.load_state_dict(bert_model.cls.predictions.transform.LayerNorm.state_dict())
-    htf_model.lm_head.decoder.load_state_dict(bert_model.cls.predictions.decoder.state_dict())
-    htf_model.lm_head.bias = copy.deepcopy(bert_model.cls.predictions.bias)
-    # htf_model.lm_head.load_state_dict(bert_model.lm_head.state_dict())
+        # copy lm_head
+        htf_model.lm_head.dense.load_state_dict(bert_model.cls.predictions.transform.dense.state_dict())
+        htf_model.lm_head.layer_norm.load_state_dict(bert_model.cls.predictions.transform.LayerNorm.state_dict())
+        htf_model.lm_head.decoder.load_state_dict(bert_model.cls.predictions.decoder.state_dict())
+        htf_model.lm_head.bias = copy.deepcopy(bert_model.cls.predictions.bias)
+        # htf_model.lm_head.load_state_dict(bert_model.lm_head.state_dict())
 
     # save model
     htf_model.save_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-{config.warmup_strategy}')
