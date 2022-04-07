@@ -614,6 +614,9 @@ def main():
     else:
         trainer.create_model_card(**kwargs)
 
+    # Needed to avoid TPU hanging
+    sys.exit()
+
 
 def _mp_fn(index):
     # For xla_spawn (TPUs)
