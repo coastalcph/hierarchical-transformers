@@ -332,9 +332,8 @@ def main():
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     if model_args.config_name and 'hi-transformer' in model_args.config_name:
-        if model_args.config_name:
-            config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
-        elif model_args.model_name_or_path:
+        config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
+    elif model_args.model_name_or_path and 'hi-transformer' in model_args.model_name_or_path:
             config = HiTransformerConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
     elif model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)

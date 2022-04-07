@@ -39,13 +39,13 @@ from transformers import (
     AutoConfig,
     AutoModelForMaskedLM,
     AutoTokenizer,
+    DataCollatorForLanguageModeling,
     HfArgumentParser,
     Trainer,
     TrainingArguments,
     is_torch_tpu_available,
     set_seed,
 )
-from data_collator import DataCollatorForLanguageModeling
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
@@ -339,10 +339,9 @@ def main():
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     if model_args.config_name and 'hi-transformer' in model_args.config_name:
-        if model_args.config_name:
-            config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
-        elif model_args.model_name_or_path:
-            config = HiTransformerConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
+        config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
+    elif model_args.model_name_or_path and 'hi-transformer' in model_args.model_name_or_path:
+        config = HiTransformerConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
     elif model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
     elif model_args.model_name_or_path:
