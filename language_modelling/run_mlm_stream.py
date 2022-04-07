@@ -429,21 +429,37 @@ def main():
         # When using line_by_line, we just tokenize each nonempty line.
         padding = "max_length" if data_args.pad_to_max_length else False
 
-        def tokenize_function(examples):
-            # Remove empty lines
-            examples[text_column_name] = [
-                line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
-            ]
-            return tokenizer(
-                examples[text_column_name],
-                padding=padding,
-                truncation=True,
-                max_length=max_seq_length,
-                greedy_chunking=data_args.greedy_chunking,
-                # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                # receives the `special_tokens_mask`.
-                return_special_tokens_mask=True,
-            )
+        if config.model_type == 'hi-transformer':
+            def tokenize_function(examples):
+                # Remove empty lines
+                examples[text_column_name] = [
+                    line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
+                ]
+                return tokenizer(
+                    examples[text_column_name],
+                    padding=padding,
+                    truncation=True,
+                    max_length=max_seq_length,
+                    greedy_chunking=data_args.greedy_chunking,
+                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
+                    # receives the `special_tokens_mask`.
+                    return_special_tokens_mask=True,
+                )
+        else:
+            def tokenize_function(examples):
+                # Remove empty lines
+                examples[text_column_name] = [
+                    line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
+                ]
+                return tokenizer(
+                    examples[text_column_name],
+                    padding=padding,
+                    truncation=True,
+                    max_length=max_seq_length,
+                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
+                    # receives the `special_tokens_mask`.
+                    return_special_tokens_mask=True,
+                )
 
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(
