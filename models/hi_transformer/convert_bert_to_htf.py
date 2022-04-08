@@ -13,6 +13,10 @@ LAYOUTS = {
     's2': 'S|SD|D|S|SD|D|S|SD|D',
     'p1': 'S|SD|S|SD|S|SD|S|SD',
     'p2': 'S|S|SD|S|S|SD|S|S|SD',
+    'e1': 'SD|SD|SD|S|S|S|S|S|S',
+    'e2': 'S|SD|D|S|SD|D|S|S|S|S',
+    'l1': 'S|S|S|S|S|S|SD|SD|SD',
+    'l2': 'S|S|S|S|S|SD|D|S|SD|D',
 }
 
 
