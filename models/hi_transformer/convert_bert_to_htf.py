@@ -44,6 +44,7 @@ def convert_bert_to_htf():
 
     NUM_HIDDEN_LAYERS = len(ENCODER_LAYOUT.keys())
     BERT_LAYERS = NUM_HIDDEN_LAYERS if config.warmup_strategy != 'linear' else NUM_HIDDEN_LAYERS*2
+    BERT_LAYERS = BERT_LAYERS + 1 if BERT_LAYERS % 2 else BERT_LAYERS
     BERT_CHECKPOINT = f'google/bert_uncased_L-{str(BERT_LAYERS)}_H-256_A-4'
 
     # load pre-trained bert model and tokenizer
