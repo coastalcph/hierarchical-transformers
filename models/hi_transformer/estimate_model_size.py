@@ -16,12 +16,12 @@ LAYOUTS = {
 def test_memory_usage(model):
     torch.cuda.reset_peak_memory_stats()
     model.to('cuda')
-    input_ids = torch.zeros((4, 1024), dtype=torch.int).to('cuda')
-    labels = torch.zeros((4,), dtype=torch.int).to('cuda')
+    input_ids = torch.zeros((1, 1024), dtype=torch.int).to('cuda')
+    attention_mask = torch.ones((1, 1024), dtype=torch.int).to('cuda')
     optimizer = torch.optim.AdamW(lr=1e-5)
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 1e-4)
     for step, batch in range(10):
-        outputs = model(input_ids=input_ids, labels=labels)
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
         loss = outputs.loss
         loss.backward(loss)
         optimizer.step()
