@@ -19,6 +19,7 @@ LAYOUTS = {
     'l2': 'S|S|S|S|S|SD|D|S|SD|D',
     'b1': 'S|S|SD|D|S|SD|D|S|S|S',
     'b2': 'S|S|SD|SD|SD|S|S|S|S',
+    'f': 'S|S|S|S|S|S|S|S|S|S|S|S',
 }
 
 
@@ -33,7 +34,8 @@ def convert_bert_to_htf():
                              'random: D encoders are not warm-started'
                              'embeds-only: No warm-starting, except embeddings'
                              'none: No warm-starting')
-    parser.add_argument('--layout', default='s1', choices=['s1', 's2', 'p1', 'p2', 'e1', 'e2', 'l1', 'l2', 'b1', 'b2'],
+    parser.add_argument('--layout', default='s1', choices=['s1', 's2', 'p1', 'p2', 'e1', 'e2',
+                                                           'l1', 'l2', 'b1', 'b2', 'f'],
                         help='S|D encoders layout')
     parser.add_argument('--max_sentences', default=8)
     config = parser.parse_args()
