@@ -549,7 +549,6 @@ class LongformerSelfAttention(nn.Module):
         layer_head_mask=None,
         is_index_masked=None,
         is_index_global_attn=None,
-        is_global_attn=None,
         output_attentions=False,
     ):
         """
@@ -607,30 +606,29 @@ class LongformerSelfAttention(nn.Module):
         ], f"local_attn_probs should be of size ({batch_size}, {seq_len}, {self.num_heads}, {self.one_sided_attn_window_size * 2 + 1}), but is of size {attn_scores.size()}"
 
         # compute local attention probs from global attention keys and contact over window dim
-        if is_global_attn:
-            # compute global attn indices required through out forward fn
-            (
-                max_num_global_attn_indices,
-                is_index_global_attn_nonzero,
-                is_local_index_global_attn_nonzero,
-                is_local_index_no_global_attn_nonzero,
-            ) = self._get_global_attn_indices(is_index_global_attn)
-            # calculate global attn probs from global key
+        # compute global attn indices required through out forward fn
+        (
+            max_num_global_attn_indices,
+            is_index_global_attn_nonzero,
+            is_local_index_global_attn_nonzero,
+            is_local_index_no_global_attn_nonzero,
+        ) = self._get_global_attn_indices(is_index_global_attn)
+        # calculate global attn probs from global key
 
-            global_key_attn_scores = self._concat_with_global_key_attn_probs(
-                query_vectors=query_vectors,
-                key_vectors=key_vectors,
-                max_num_global_attn_indices=max_num_global_attn_indices,
-                is_index_global_attn_nonzero=is_index_global_attn_nonzero,
-                is_local_index_global_attn_nonzero=is_local_index_global_attn_nonzero,
-                is_local_index_no_global_attn_nonzero=is_local_index_no_global_attn_nonzero,
-            )
-            # concat to local_attn_probs
-            # (batch_size, seq_len, num_heads, extra attention count + 2*window+1)
-            attn_scores = torch.cat((global_key_attn_scores, attn_scores), dim=-1)
+        global_key_attn_scores = self._concat_with_global_key_attn_probs(
+            query_vectors=query_vectors,
+            key_vectors=key_vectors,
+            max_num_global_attn_indices=max_num_global_attn_indices,
+            is_index_global_attn_nonzero=is_index_global_attn_nonzero,
+            is_local_index_global_attn_nonzero=is_local_index_global_attn_nonzero,
+            is_local_index_no_global_attn_nonzero=is_local_index_no_global_attn_nonzero,
+        )
+        # concat to local_attn_probs
+        # (batch_size, seq_len, num_heads, extra attention count + 2*window+1)
+        attn_scores = torch.cat((global_key_attn_scores, attn_scores), dim=-1)
 
-            # free memory
-            del global_key_attn_scores
+        # free memory
+        del global_key_attn_scores
 
         attn_probs = nn.functional.softmax(
             attn_scores, dim=-1
@@ -656,57 +654,51 @@ class LongformerSelfAttention(nn.Module):
         value_vectors = value_vectors.view(seq_len, batch_size, self.num_heads, self.head_dim).transpose(0, 1)
 
         # compute local attention output with global attention value and add
-        if is_global_attn:
-            # compute sum of global and local attn
-            attn_output = self._compute_attn_output_with_global_indices(
-                value_vectors=value_vectors,
-                attn_probs=attn_probs,
-                max_num_global_attn_indices=max_num_global_attn_indices,
-                is_index_global_attn_nonzero=is_index_global_attn_nonzero,
-                is_local_index_global_attn_nonzero=is_local_index_global_attn_nonzero,
-            )
-        else:
-            # compute local attn only
-            attn_output = self._sliding_chunks_matmul_attn_probs_value(
-                attn_probs, value_vectors, self.one_sided_attn_window_size
-            )
+        # compute sum of global and local attn
+        attn_output = self._compute_attn_output_with_global_indices(
+            value_vectors=value_vectors,
+            attn_probs=attn_probs,
+            max_num_global_attn_indices=max_num_global_attn_indices,
+            is_index_global_attn_nonzero=is_index_global_attn_nonzero,
+            is_local_index_global_attn_nonzero=is_local_index_global_attn_nonzero,
+        )
+
 
         assert attn_output.size() == (batch_size, seq_len, self.num_heads, self.head_dim), "Unexpected size"
         attn_output = attn_output.transpose(0, 1).reshape(seq_len, batch_size, embed_dim).contiguous()
 
         # compute value for global attention and overwrite to attention output
         # TODO: remove the redundant computation
-        if is_global_attn:
-            global_attn_output, global_attn_probs = self._compute_global_attn_output_from_hidden(
-                hidden_states=hidden_states,
-                max_num_global_attn_indices=max_num_global_attn_indices,
-                layer_head_mask=layer_head_mask,
-                is_local_index_global_attn_nonzero=is_local_index_global_attn_nonzero,
-                is_index_global_attn_nonzero=is_index_global_attn_nonzero,
-                is_local_index_no_global_attn_nonzero=is_local_index_no_global_attn_nonzero,
-                is_index_masked=is_index_masked,
-            )
+        global_attn_output, global_attn_probs = self._compute_global_attn_output_from_hidden(
+            hidden_states=hidden_states,
+            max_num_global_attn_indices=max_num_global_attn_indices,
+            layer_head_mask=layer_head_mask,
+            is_local_index_global_attn_nonzero=is_local_index_global_attn_nonzero,
+            is_index_global_attn_nonzero=is_index_global_attn_nonzero,
+            is_local_index_no_global_attn_nonzero=is_local_index_no_global_attn_nonzero,
+            is_index_masked=is_index_masked,
+        )
 
-            # get only non zero global attn output
-            nonzero_global_attn_output = global_attn_output[
-                is_local_index_global_attn_nonzero[0], :, is_local_index_global_attn_nonzero[1]
-            ]
+        # get only non zero global attn output
+        nonzero_global_attn_output = global_attn_output[
+            is_local_index_global_attn_nonzero[0], :, is_local_index_global_attn_nonzero[1]
+        ]
 
-            # overwrite values with global attention
-            attn_output[is_index_global_attn_nonzero[::-1]] = nonzero_global_attn_output.view(
-                len(is_local_index_global_attn_nonzero[0]), -1
-            )
-            # The attention weights for tokens with global attention are
-            # just filler values, they were never used to compute the output.
-            # Fill with 0 now, the correct values are in 'global_attn_probs'.
-            attn_probs[is_index_global_attn_nonzero] = 0
+        # overwrite values with global attention
+        attn_output[is_index_global_attn_nonzero[::-1]] = nonzero_global_attn_output.view(
+            len(is_local_index_global_attn_nonzero[0]), -1
+        )
+        # The attention weights for tokens with global attention are
+        # just filler values, they were never used to compute the output.
+        # Fill with 0 now, the correct values are in 'global_attn_probs'.
+        attn_probs[is_index_global_attn_nonzero] = 0
 
         outputs = (attn_output.transpose(0, 1),)
 
         if output_attentions:
             outputs += (attn_probs,)
 
-        return outputs + (global_attn_probs,) if (is_global_attn and output_attentions) else outputs
+        return outputs + (global_attn_probs,) if output_attentions else outputs
 
     @staticmethod
     def _pad_and_transpose_last_two_dims(hidden_states_padded, padding):
@@ -1150,7 +1142,6 @@ class LongformerAttention(nn.Module):
         layer_head_mask=None,
         is_index_masked=None,
         is_index_global_attn=None,
-        is_global_attn=None,
         output_attentions=False,
     ):
         self_outputs = self.self(
@@ -1159,7 +1150,6 @@ class LongformerAttention(nn.Module):
             layer_head_mask=layer_head_mask,
             is_index_masked=is_index_masked,
             is_index_global_attn=is_index_global_attn,
-            is_global_attn=is_global_attn,
             output_attentions=output_attentions,
         )
         attn_output = self.output(self_outputs[0], hidden_states)
@@ -1214,7 +1204,6 @@ class LongformerLayer(nn.Module):
         layer_head_mask=None,
         is_index_masked=None,
         is_index_global_attn=None,
-        is_global_attn=None,
         output_attentions=False,
     ):
         self_attn_outputs = self.attention(
@@ -1223,7 +1212,6 @@ class LongformerLayer(nn.Module):
             layer_head_mask=layer_head_mask,
             is_index_masked=is_index_masked,
             is_index_global_attn=is_index_global_attn,
-            is_global_attn=is_global_attn,
             output_attentions=output_attentions,
         )
         attn_output = self_attn_outputs[0]
@@ -1261,11 +1249,10 @@ class LongformerEncoder(nn.Module):
 
         is_index_masked = attention_mask < 0
         is_index_global_attn = attention_mask > 0
-        is_global_attn = is_index_global_attn.flatten().any().item()
 
         all_hidden_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None  # All local attentions.
-        all_global_attentions = () if (output_attentions and is_global_attn) else None
+        all_global_attentions = () if output_attentions else None
 
         # check if head_mask has a correct number of layers specified if desired
         if head_mask is not None:
@@ -1280,7 +1267,7 @@ class LongformerEncoder(nn.Module):
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
-                        return module(*inputs, is_global_attn, output_attentions)
+                        return module(*inputs, output_attentions)
 
                     return custom_forward
 
@@ -1299,7 +1286,6 @@ class LongformerEncoder(nn.Module):
                     layer_head_mask=head_mask[idx] if head_mask is not None else None,
                     is_index_masked=is_index_masked,
                     is_index_global_attn=is_index_global_attn,
-                    is_global_attn=is_global_attn,
                     output_attentions=output_attentions,
                 )
             hidden_states = layer_outputs[0]
@@ -1307,10 +1293,8 @@ class LongformerEncoder(nn.Module):
             if output_attentions:
                 # bzs x seq_len x num_attn_heads x (num_global_attn + attention_window_len + 1) => bzs x num_attn_heads x seq_len x (num_global_attn + attention_window_len + 1)
                 all_attentions = all_attentions + (layer_outputs[1].transpose(1, 2),)
-
-                if is_global_attn:
-                    # bzs x num_attn_heads x num_global_attn x seq_len => bzs x num_attn_heads x seq_len x num_global_attn
-                    all_global_attentions = all_global_attentions + (layer_outputs[2].transpose(2, 3),)
+                # bzs x num_attn_heads x num_global_attn x seq_len => bzs x num_attn_heads x seq_len x num_global_attn
+                all_global_attentions = all_global_attentions + (layer_outputs[2].transpose(2, 3),)
 
         # Add last layer
         if output_hidden_states:
