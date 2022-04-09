@@ -17,6 +17,8 @@ LAYOUTS = {
     'e2': 'S|SD|D|S|SD|D|S|S|S|S',
     'l1': 'S|S|S|S|S|S|SD|SD|SD',
     'l2': 'S|S|S|S|S|SD|D|S|SD|D',
+    'b1': 'S|S|SD|D|S|SD|D|S|S|S',
+    'b2': 'S|S|SD|SD|SD|S|S|S|S',
 }
 
 
