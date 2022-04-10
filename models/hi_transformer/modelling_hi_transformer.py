@@ -1190,7 +1190,7 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
-            return ((total_loss,) + output) if total_loss is not None else output
+            return ((total_loss, masked_lm_loss, srp_loss, drp_loss) + output) if total_loss is not None else output
 
         return HiTransformerForPreTrainingOutput(
             loss=total_loss,

@@ -39,7 +39,6 @@ from transformers import (
     AutoConfig,
     AutoTokenizer,
     HfArgumentParser,
-    Trainer,
     TrainingArguments,
     is_torch_tpu_available,
     set_seed,
@@ -50,6 +49,7 @@ from transformers.utils.versions import require_version
 from language_modelling.data_collator_pre_training import DataCollatorForPreTraining
 from language_modelling.text_featurization import train_text_featurizer
 from models.hi_transformer import HiTransformerModelForPreTraining, HiTransformerTokenizer, HiTransformerConfig
+from language_modelling.trainer import Trainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.15.0")
@@ -209,7 +209,7 @@ class DataTrainingArguments:
         },
     )
     srp: Optional[int] = field(
-        default=False,
+        default=True,
         metadata={
             "help": "Whether to add masked sentence representation prediction in pre-training objectives"
         },
@@ -491,7 +491,7 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["text"],
+                remove_columns=["labels", "text"],
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -506,7 +506,7 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["text"],
+                remove_columns=["labels", "text"],
             )
 
         # Main data processing function that will concatenate all texts from our dataset and generate chunks of
@@ -578,7 +578,7 @@ def main():
 
     tfidf_vect, pca_solver = None, None
     if data_args.drp or data_args.srp:
-        tfidf_vect, pca_solver = train_text_featurizer(train_dataset,
+        tfidf_vect, pca_solver = train_text_featurizer(iter(train_dataset),
                                                        tokenizer=tokenizer,
                                                        hidden_units=config.hidden_size)
 

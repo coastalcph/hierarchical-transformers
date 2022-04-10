@@ -1348,10 +1348,12 @@ class Trainer:
         tr_loss = torch.tensor(0.0).to(args.device)
         mlm_loss = torch.tensor(0.0).to(args.device)
         srp_loss = torch.tensor(0.0).to(args.device)
+        drp_loss = torch.tensor(0.0).to(args.device)
         # _total_loss_scalar is updated everytime .item() has to be called on tr_loss and stores the sum of all losses
         self._total_loss_scalar = 0.0
         self._mlm_loss_scalar = 0.0
         self._srp_loss_scalar = 0.0
+        self._drp_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
         model.zero_grad()
 
@@ -1421,9 +1423,9 @@ class Trainer:
                 ):
                     # Avoid unnecessary DDP synchronization since there will be no backward pass on this example.
                     with model.no_sync():
-                        tr_loss_step, mlm_loss_step, srp_loss_step = self.training_step(model, inputs)
+                        tr_loss_step, mlm_loss_step, srp_loss_step, drp_loss_step = self.training_step(model, inputs)
                 else:
-                    tr_loss_step, mlm_loss_step, srp_loss_step = self.training_step(model, inputs)
+                    tr_loss_step, mlm_loss_step, srp_loss_step, drp_loss_step = self.training_step(model, inputs)
 
                 if (
                     args.logging_nan_inf_filter
@@ -1432,10 +1434,14 @@ class Trainer:
                 ):
                     # if loss is nan or inf simply add the average of previous logged losses
                     tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                    mlm_loss += mlm_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                    srp_loss += srp_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                    drp_loss += drp_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                 else:
                     tr_loss += tr_loss_step
                     mlm_loss += mlm_loss_step
                     srp_loss += srp_loss_step
+                    drp_loss += drp_loss_step
 
                 self.current_flos += float(self.floating_point_ops(inputs))
 
@@ -1500,7 +1506,8 @@ class Trainer:
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
-                    self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
+                    self._maybe_log_save_evaluate(tr_loss, mlm_loss, srp_loss, drp_loss, model,
+                                                  trial, epoch, ignore_keys_for_eval)
                 else:
                     self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
 
@@ -1515,7 +1522,8 @@ class Trainer:
                 self.control.should_training_stop = True
 
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(tr_loss, mlm_loss, srp_loss,  model, trial, epoch, ignore_keys_for_eval)
+            self._maybe_log_save_evaluate(tr_loss, mlm_loss, srp_loss, drp_loss, model,
+                                          trial, epoch, ignore_keys_for_eval)
 
             if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
                 if is_torch_tpu_available():
@@ -1573,16 +1581,22 @@ class Trainer:
         self._total_loss_scalar += tr_loss.item()
         self._mlm_loss_scalar += mlm_loss.item()
         self._srp_loss_scalar += srp_loss.item()
+        self._drp_loss_scalar += drp_loss.item()
         train_loss = self._total_loss_scalar / self.state.global_step
         train_mlm_loss = self._mlm_loss_scalar / self.state.global_step
         train_srp_loss = self._srp_loss_scalar / self.state.global_step
+        train_drp_loss = self._drp_loss_scalar / self.state.global_step
 
         metrics = speed_metrics("train", start_time, num_samples=num_train_samples, num_steps=self.state.max_steps)
         self.store_flos()
         metrics["total_flos"] = self.state.total_flos
         metrics["train_loss"] = train_loss
-        metrics["train_mlm_loss"] = train_mlm_loss
-        metrics["train_srp_loss"] = train_srp_loss
+        if train_mlm_loss != 0:
+            metrics["train_mlm_loss"] = train_mlm_loss
+        if train_srp_loss != 0:
+            metrics["train_srp_loss"] = train_srp_loss
+        if train_drp_loss != 0:
+            metrics["train_drp_loss"] = train_drp_loss
 
         self.is_in_train = False
 
@@ -1609,7 +1623,7 @@ class Trainer:
                 f"There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}."
             )
 
-    def _maybe_log_save_evaluate(self, tr_loss, mlm_loss, srp_loss, model, trial, epoch, ignore_keys_for_eval):
+    def _maybe_log_save_evaluate(self, tr_loss, mlm_loss, srp_loss, drp_loss, model, trial, epoch, ignore_keys_for_eval):
         if self.control.should_log:
             if is_torch_tpu_available():
                 xm.mark_step()
@@ -1620,15 +1634,21 @@ class Trainer:
             tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
             mlm_loss_scalar = self._nested_gather(mlm_loss).mean().item()
             srp_loss_loss_scalar = self._nested_gather(srp_loss).mean().item()
+            drp_loss_loss_scalar = self._nested_gather(drp_loss).mean().item()
 
             # reset tr_loss to zero
             tr_loss -= tr_loss
             mlm_loss -= mlm_loss
             srp_loss -= srp_loss
+            drp_loss -= drp_loss
 
             logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
-            logs["mlm_loss"] = round(mlm_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
-            logs["srp_loss"] = round(srp_loss_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            if mlm_loss_scalar != 0:
+                logs["mlm_loss"] = round(mlm_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            if srp_loss_loss_scalar != 0:
+                logs["srp_loss"] = round(srp_loss_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            if drp_loss_loss_scalar != 0:
+                logs["drp_loss"] = round(drp_loss_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
             logs["learning_rate"] = self._get_learning_rate()
 
             self._total_loss_scalar += tr_loss_scalar
@@ -2026,23 +2046,27 @@ class Trainer:
             return loss_mb.reduce_mean().detach().to(self.args.device)
 
         with self.autocast_smart_context_manager():
-            loss, mlm_loss, srp_loss = self.compute_loss(model, inputs)
+            loss, mlm_loss, srp_loss, drp_loss = self.compute_loss(model, inputs)
 
         if mlm_loss is None:
-            mlm_loss = torch.tensor(0, dtype=loss.dtype)
+            mlm_loss = torch.tensor(0.0).to(loss.device)
         if srp_loss is None:
-            mlm_loss = torch.tensor(0, dtype=loss.dtype)
+            srp_loss = torch.tensor(0.0).to(loss.device)
+        if drp_loss is None:
+            drp_loss = torch.tensor(0.0).to(loss.device)
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
             mlm_loss = mlm_loss.mean()
             srp_loss = srp_loss.mean()
+            drp_loss = drp_loss.mean()
 
         if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
             # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
             loss = loss / self.args.gradient_accumulation_steps
             mlm_loss = mlm_loss / self.args.gradient_accumulation_steps
             srp_loss = srp_loss / self.args.gradient_accumulation_steps
+            drp_loss = drp_loss / self.args.gradient_accumulation_steps
 
         if self.do_grad_scaling:
             self.scaler.scale(loss).backward()
@@ -2055,7 +2079,7 @@ class Trainer:
         else:
             loss.backward()
 
-        return loss.detach(), mlm_loss.detach(), srp_loss.detach()
+        return loss.detach(), mlm_loss.detach(), srp_loss.detach(), drp_loss.detach()
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
@@ -2079,7 +2103,9 @@ class Trainer:
             # We don't use .loss here since the model may return tuples instead of ModelOutput.
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
-        return (loss, outputs.mlm_loss, outputs.srp_loss, outputs) if return_outputs else loss, outputs.mlm_loss, outputs.srp_loss
+        return (loss, outputs.mlm_loss, outputs.srp_loss, outputs.drp_loss, outputs) if return_outputs \
+                   else (loss, outputs.mlm_loss, outputs.srp_loss, outputs.drp_loss)
+
 
     def is_local_process_zero(self) -> bool:
         """
@@ -2462,15 +2488,23 @@ class Trainer:
         # Initialize containers
         # losses/preds/labels on GPU/TPU (accumulated for eval_accumulation_steps)
         losses_host = None
+        mlm_losses_host = None
+        srp_losses_host = None
+        drp_losses_host = None
         preds_host = None
         labels_host = None
         inputs_host = None
 
         # losses/preds/labels on CPU (final containers)
         all_losses = None
+        mlm_all_losses = None
+        srp_all_losses = None
+        drp_all_losses = None
+        mlm_losses = None
+        srp_losses = None
+        drp_losses = None
         all_preds = None
         all_labels = None
-        all_inputs = None
         # Will be useful when we have an iterable dataset so don't know its length.
 
         observed_num_examples = 0
@@ -2485,8 +2519,7 @@ class Trainer:
                     batch_size = observed_batch_size
 
             # Prediction step
-            loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            inputs_decode = inputs["input_ids"] if args.include_inputs_for_metrics else None
+            loss, mlm_loss, srp_loss, drp_loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
 
             if is_torch_tpu_available():
                 xm.mark_step()
@@ -2495,18 +2528,19 @@ class Trainer:
             if loss is not None:
                 losses = self._nested_gather(loss.repeat(batch_size))
                 losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
+            if mlm_loss is not None:
+                mlm_losses = self._nested_gather(mlm_loss.repeat(batch_size))
+                mlm_losses_host = mlm_losses if mlm_losses_host is None else torch.cat((mlm_losses_host, mlm_losses), dim=0)
+            if srp_loss is not None:
+                srp_losses = self._nested_gather(srp_loss.repeat(batch_size))
+                srp_losses_host = srp_losses if srp_losses_host is None else torch.cat((srp_losses_host, srp_losses), dim=0)
+            if drp_loss is not None:
+                drp_losses = self._nested_gather(drp_loss.repeat(batch_size))
+                drp_losses_host = srp_losses if drp_losses_host is None else torch.cat((drp_losses_host, drp_losses), dim=0)
             if labels is not None:
                 labels = self._pad_across_processes(labels)
                 labels = self._nested_gather(labels)
                 labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
-            if inputs_decode is not None:
-                inputs_decode = self._pad_across_processes(inputs_decode)
-                inputs_decode = self._nested_gather(inputs_decode)
-                inputs_host = (
-                    inputs_decode
-                    if inputs_host is None
-                    else nested_concat(inputs_host, inputs_decode, padding_index=-100)
-                )
             if logits is not None:
                 logits = self._pad_across_processes(logits)
                 logits = self._nested_gather(logits)
@@ -2523,13 +2557,6 @@ class Trainer:
                 if preds_host is not None:
                     logits = nested_numpify(preds_host)
                     all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
-                if inputs_host is not None:
-                    inputs_decode = nested_numpify(inputs_host)
-                    all_inputs = (
-                        inputs_decode
-                        if all_inputs is None
-                        else nested_concat(all_inputs, inputs_decode, padding_index=-100)
-                    )
                 if labels_host is not None:
                     labels = nested_numpify(labels_host)
                     all_labels = (
@@ -2537,7 +2564,7 @@ class Trainer:
                     )
 
                 # Set back to None to begin a new accumulation
-                losses_host, preds_host, inputs_host, labels_host = None, None, None, None
+                losses_host, preds_host, labels_host = None, None, None
 
         if args.past_index and hasattr(self, "_past"):
             # Clean the state at the end of the evaluation loop
@@ -2547,14 +2574,18 @@ class Trainer:
         if losses_host is not None:
             losses = nested_numpify(losses_host)
             all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
+        if mlm_losses_host is not None:
+            mlm_losses = nested_numpify(mlm_losses_host)
+            mlm_all_losses = mlm_losses if mlm_all_losses is None else np.concatenate((mlm_all_losses, mlm_losses), axis=0)
+        if srp_losses_host is not None:
+            srp_losses = nested_numpify(srp_losses_host)
+            srp_all_losses = srp_losses if srp_all_losses is None else np.concatenate((srp_all_losses, srp_losses), axis=0)
+        if drp_losses_host is not None:
+            drp_losses = nested_numpify(srp_losses_host)
+            drp_all_losses = drp_losses if drp_all_losses is None else np.concatenate((drp_all_losses, drp_losses), axis=0)
         if preds_host is not None:
             logits = nested_numpify(preds_host)
             all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
-        if inputs_host is not None:
-            inputs_decode = nested_numpify(inputs_host)
-            all_inputs = (
-                inputs_decode if all_inputs is None else nested_concat(all_inputs, inputs_decode, padding_index=-100)
-            )
         if labels_host is not None:
             labels = nested_numpify(labels_host)
             all_labels = labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
@@ -2576,21 +2607,20 @@ class Trainer:
         # samplers has been rounded to a multiple of batch_size, so we truncate.
         if all_losses is not None:
             all_losses = all_losses[:num_samples]
+        if mlm_all_losses is not None:
+            mlm_all_losses = mlm_all_losses[:num_samples]
+        if srp_all_losses is not None:
+            srp_all_losses = srp_all_losses[:num_samples]
+        if drp_all_losses is not None:
+            drp_all_losses = drp_all_losses[:num_samples]
         if all_preds is not None:
             all_preds = nested_truncate(all_preds, num_samples)
         if all_labels is not None:
             all_labels = nested_truncate(all_labels, num_samples)
-        if all_inputs is not None:
-            all_inputs = nested_truncate(all_inputs, num_samples)
 
         # Metrics!
         if self.compute_metrics is not None and all_preds is not None and all_labels is not None:
-            if args.include_inputs_for_metrics:
-                metrics = self.compute_metrics(
-                    EvalPrediction(predictions=all_preds, label_ids=all_labels, inputs=all_inputs)
-                )
-            else:
-                metrics = self.compute_metrics(EvalPrediction(predictions=all_preds, label_ids=all_labels))
+            metrics = self.compute_metrics(EvalPrediction(predictions=all_preds, label_ids=all_labels))
         else:
             metrics = {}
 
@@ -2599,6 +2629,12 @@ class Trainer:
 
         if all_losses is not None:
             metrics[f"{metric_key_prefix}_loss"] = all_losses.mean().item()
+        if mlm_all_losses is not None:
+            metrics[f"{metric_key_prefix}_mlm_loss"] = mlm_all_losses.mean().item()
+        if srp_all_losses is not None:
+            metrics[f"{metric_key_prefix}_srp_loss"] = srp_all_losses.mean().item()
+        if drp_all_losses is not None:
+            metrics[f"{metric_key_prefix}_drp_loss"] = drp_all_losses.mean().item()
 
         # Prefix all keys with metric_key_prefix + '_'
         for key in list(metrics.keys()):
@@ -2687,7 +2723,7 @@ class Trainer:
             Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]: A tuple with the loss,
             logits and labels (each being optional).
         """
-        has_labels = all(inputs.get(k) is not None for k in self.label_names)
+        has_labels = all(inputs.get(k) is not None for k in ['labels'])
         inputs = self._prepare_inputs(inputs)
         if ignore_keys is None:
             if hasattr(self.model, "config"):
@@ -2697,7 +2733,7 @@ class Trainer:
 
         # labels may be popped when computing the loss (label smoothing for instance) so we grab them first.
         if has_labels:
-            labels = nested_detach(tuple(inputs.get(name) for name in self.label_names))
+            labels = nested_detach(tuple(inputs.get(name) for name in ['labels']))
             if len(labels) == 1:
                 labels = labels[0]
         else:
@@ -2726,39 +2762,42 @@ class Trainer:
             else:
                 if has_labels:
                     with self.autocast_smart_context_manager():
-                        loss, mlm_loss, srp_loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
+                        loss, mlm_loss, srp_loss, drp_loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
                     loss = loss.mean().detach()
                     if mlm_loss is not None:
                         mlm_loss = mlm_loss.mean().detach()
                     if srp_loss is not None:
                         srp_loss = srp_loss.mean().detach()
+                    if drp_loss is not None:
+                        drp_loss = drp_loss.mean().detach()
 
                     if isinstance(outputs, dict):
-                        logits = tuple(v for k, v in outputs.items() if k not in ignore_keys + ["loss"])
+                        logits = outputs['prediction_logits']
                     else:
-                        logits = outputs[1:]
+                        logits = outputs.prediction_logits
                 else:
                     loss = None
                     mlm_loss = None
                     srp_loss = None
+                    drp_loss = None
                     with self.autocast_smart_context_manager():
                         outputs = model(**inputs)
                     if isinstance(outputs, dict):
-                        logits = tuple(v for k, v in outputs.items() if k not in ignore_keys)
+                        logits = outputs['prediction_logits']
                     else:
-                        logits = outputs
+                        logits = outputs.prediction_logits
                     # TODO: this needs to be fixed and made cleaner later.
                     if self.args.past_index >= 0:
                         self._past = outputs[self.args.past_index - 1]
 
         if prediction_loss_only:
-            return (loss, mlm_loss, srp_loss, None, None)
+            return (loss, mlm_loss, srp_loss, drp_loss, None, None)
 
         logits = nested_detach(logits)
         if len(logits) == 1:
             logits = logits[0]
 
-        return (loss, mlm_loss, srp_loss, logits, labels)
+        return (loss, mlm_loss, srp_loss, drp_loss, logits, labels)
 
     def floating_point_ops(self, inputs: Dict[str, Union[torch.Tensor, Any]]):
         """
