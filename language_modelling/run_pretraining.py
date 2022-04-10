@@ -41,6 +41,7 @@ from transformers import (
     HfArgumentParser,
     Trainer,
     TrainingArguments,
+    is_torch_tpu_available,
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
@@ -144,7 +145,7 @@ class DataTrainingArguments:
         },
     )
     max_seq_length: Optional[int] = field(
-        default=8192,
+        default=None,
         metadata={
             "help": "The maximum total input sequence length after tokenization. Sequences longer "
             "than this will be truncated."
@@ -166,6 +167,13 @@ class DataTrainingArguments:
         metadata={
             "help": "Whether to pad all samples to `max_seq_length`. "
             "If False, will pad the samples dynamically when batching to the maximum length in the batch."
+        },
+    )
+    greedy_chunking: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to chunk input sequences greedily. "
+            "If False, tokenizer will use sentence splitting, otherwise fixed chunking."
         },
     )
     max_train_samples: Optional[int] = field(
@@ -290,20 +298,28 @@ def main():
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         raw_datasets = load_dataset(
-            data_args.dataset_name, data_args.dataset_config_name, cache_dir=model_args.cache_dir
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+            data_dir=data_args.dataset_name,
+            cache_dir=model_args.cache_dir,
+            streaming=True
         )
         if "validation" not in raw_datasets.keys():
             raw_datasets["validation"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
+                data_dir=data_args.dataset_name,
                 split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
+                streaming=True
             )
             raw_datasets["train"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
+                data_dir=data_args.dataset_name,
                 split=f"train[{data_args.validation_split_percentage}%:]",
                 cache_dir=model_args.cache_dir,
+                streaming=True
             )
     else:
         data_files = {}
@@ -332,8 +348,9 @@ def main():
                 cache_dir=model_args.cache_dir,
             )
 
-    raw_datasets['train'] = raw_datasets['train'].remove_columns([column for column in raw_datasets.column_names['train'] if column != 'text'])
-    raw_datasets['validation'] = raw_datasets['validation'].remove_columns([column for column in raw_datasets.column_names['validation'] if column !='text'])
+    raw_datasets = raw_datasets.with_format("torch")
+    # raw_datasets['train'] = raw_datasets['train'].remove_columns([column for column in raw_datasets.column_names['train'] if column != 'text'])
+    # raw_datasets['validation'] = raw_datasets['validation'].remove_columns([column for column in raw_datasets.column_names['validation'] if column !='text'])
 
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
@@ -348,11 +365,10 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    if 'hi-transformer' in model_args.config_name:
-        if model_args.config_name:
-            config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
-        elif model_args.model_name_or_path:
-            config = HiTransformerConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
+    if model_args.config_name and 'hi-transformer' in model_args.config_name:
+        config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
+    elif model_args.model_name_or_path and 'hi-transformer' in model_args.model_name_or_path:
+        config = HiTransformerConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
     elif model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
     elif model_args.model_name_or_path:
@@ -417,11 +433,7 @@ def main():
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
-    if training_args.do_train:
-        column_names = raw_datasets["train"].column_names
-    else:
-        column_names = raw_datasets["validation"].column_names
-    text_column_name = "text" if "text" in column_names else column_names[0]
+    text_column_name = "text"
 
     if data_args.max_seq_length is None:
         max_seq_length = tokenizer.model_max_length
@@ -443,45 +455,58 @@ def main():
         # When using line_by_line, we just tokenize each nonempty line.
         padding = "max_length" if data_args.pad_to_max_length else False
 
-        def tokenize_function(examples):
-            # Remove empty lines
-            examples[text_column_name] = [
-                line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
-            ]
-            return tokenizer(
-                examples[text_column_name],
-                padding=padding,
-                truncation=True,
-                max_length=max_seq_length,
-                # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                # receives the `special_tokens_mask`.
-                return_special_tokens_mask=True,
-            )
+        if config.model_type == 'hi-transformer':
+            def tokenize_function(examples):
+                # Remove empty lines
+                examples[text_column_name] = [
+                    line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
+                ]
+                return tokenizer(
+                    examples[text_column_name],
+                    padding=padding,
+                    truncation=True,
+                    max_length=max_seq_length,
+                    greedy_chunking=data_args.greedy_chunking,
+                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
+                    # receives the `special_tokens_mask`.
+                    return_special_tokens_mask=True,
+                )
+        else:
+            def tokenize_function(examples):
+                # Remove empty lines
+                examples[text_column_name] = [
+                    line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
+                ]
+                return tokenizer(
+                    examples[text_column_name],
+                    padding=padding,
+                    truncation=True,
+                    max_length=max_seq_length,
+                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
+                    # receives the `special_tokens_mask`.
+                    return_special_tokens_mask=True,
+                )
 
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=[text_column_name],
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on dataset line_by_line",
+                remove_columns=["text"],
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
         # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
         # efficient when it receives the `special_tokens_mask`.
         def tokenize_function(examples):
-            return tokenizer(examples[text_column_name], return_special_tokens_mask=True)
+            return tokenizer(examples[text_column_name],
+                             greedy_chunking=data_args.greedy_chunking,
+                             return_special_tokens_mask=True)
 
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=column_names,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on every text in dataset",
+                remove_columns=["text"],
             )
 
         # Main data processing function that will concatenate all texts from our dataset and generate chunks of
@@ -496,7 +521,7 @@ def main():
                 total_length = (total_length // max_seq_length) * max_seq_length
             # Split by chunks of max_len.
             result = {
-                k: [t[i: i + max_seq_length] for i in range(0, total_length, max_seq_length)]
+                k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
                 for k, t in concatenated_examples.items()
             }
             return result
@@ -512,9 +537,7 @@ def main():
             tokenized_datasets = tokenized_datasets.map(
                 group_texts,
                 batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc=f"Grouping texts in chunks of {max_seq_length}",
+                remove_columns=["text"],
             )
 
     if training_args.do_train:
@@ -522,36 +545,45 @@ def main():
             raise ValueError("--do_train requires a train dataset")
         train_dataset = tokenized_datasets["train"]
         if data_args.max_train_samples is not None:
-            train_dataset = train_dataset.select(range(data_args.max_train_samples))
+            max_train_samples = data_args.max_train_samples
+            train_dataset = train_dataset.take(max_train_samples)
 
     if training_args.do_eval:
         if "validation" not in tokenized_datasets:
             raise ValueError("--do_eval requires a validation dataset")
         eval_dataset = tokenized_datasets["validation"]
         if data_args.max_eval_samples is not None:
-            eval_dataset = eval_dataset.select(range(data_args.max_eval_samples))
+            max_eval_samples = data_args.max_eval_samples
+            eval_dataset = eval_dataset.take(max_eval_samples)
+
+        def preprocess_logits_for_metrics(logits, labels):
+            if isinstance(logits, tuple):
+                # Depending on the model and config, logits may contain extra tensors,
+                # like past_key_values, but logits always come first
+                logits = logits[0]
+            return logits.argmax(dim=-1)
 
         metric = load_metric("accuracy")
 
         def compute_metrics(eval_preds):
-            logits, labels = eval_preds
+            preds, labels = eval_preds
+            # preds have the same shape as the labels, after the argmax(-1) has been calculated
+            # by preprocess_logits_for_metrics
             labels = labels.reshape(-1)
-            preds = logits[0].argmax(-1).reshape(-1)
+            preds = preds.reshape(-1)
             mask = labels != -100
             labels = labels[mask]
             preds = preds[mask]
-            accuracy = metric.compute(predictions=preds, references=labels)
-
-            return {'accuracy': accuracy['accuracy']}
+            return metric.compute(predictions=preds, references=labels)
 
     tfidf_vect, pca_solver = None, None
     if data_args.drp or data_args.srp:
-        tfidf_vect, pca_solver = train_text_featurizer(tokenizer=tokenizer,
-                                                       documents=raw_datasets['train']['text'][:1000],
+        tfidf_vect, pca_solver = train_text_featurizer(train_dataset,
+                                                       tokenizer=tokenizer,
                                                        hidden_units=config.hidden_size)
 
     # Data collator
-    # This one will take care of pre-training labels.
+    # This one will take care of pre-training labels
     data_collator = DataCollatorForPreTraining(
         tokenizer=tokenizer,
         mlm=data_args.mlm,
@@ -573,7 +605,10 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        compute_metrics=compute_metrics if training_args.do_eval else None,
+        compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics
+        if training_args.do_eval and not is_torch_tpu_available()
+        else None,
     )
 
     # Training
@@ -587,10 +622,10 @@ def main():
         trainer.save_model()  # Saves the tokenizer too for easy upload
         metrics = train_result.metrics
 
-        max_train_samples = (
-            data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
-        )
-        metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+        #max_train_samples = (
+        #    data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
+        #)
+        #metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
@@ -602,8 +637,8 @@ def main():
 
         metrics = trainer.evaluate()
 
-        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+        #max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+        #metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         try:
             perplexity = math.exp(metrics["eval_loss"])
         except OverflowError:
@@ -626,6 +661,9 @@ def main():
         trainer.push_to_hub(**kwargs)
     else:
         trainer.create_model_card(**kwargs)
+
+    # Needed to avoid TPU hanging
+    sys.exit()
 
 
 def _mp_fn(index):

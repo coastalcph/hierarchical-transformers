@@ -43,13 +43,34 @@ The repository supports several variants of the `Hi-Transformer` architecture. T
 "5": {"sentence_encoder": true, "document_encoder":  true}},
 ```
 
+In thi study, we examine the efficacy of 10 alternative layouts:
+
+```json lines
+LAYOUTS = {
+    's1': 'SD|SD|SD|SD|SD|SD',
+    's2': 'S|SD|D|S|SD|D|S|SD|D',
+    'p1': 'S|SD|S|SD|S|SD|S|SD',
+    'p2': 'S|S|SD|S|S|SD|S|S|SD',
+    'e1': 'SD|SD|SD|S|S|S|S|S|S',
+    'e2': 'S|SD|D|S|SD|D|S|S|S|S',
+    'l1': 'S|S|S|S|S|S|SD|SD|SD',
+    'l2': 'S|S|S|S|S|SD|D|S|SD|D',
+    'b1': 'S|S|SD|D|S|SD|D|S|S|S',
+    'b2': 'S|S|SD|SD|SD|S|S|S|S',
+    'f':  'S|S|S|S|S|S|S|S|S|S|S|S',
+}
+
+```
+
+
+
 ### Requirements
 
 Make sure that all required packages are installed:
 
 ```
 torch>=1.11.0
-transformers>=4.15.0
+transformers>=4.17.0
 datasets>=2.0.0
 tokenizers>=0.11.0
 scikit-learn>=1.0.0

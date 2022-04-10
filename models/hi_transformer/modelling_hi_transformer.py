@@ -153,8 +153,13 @@ class HiTransformerForPreTrainingOutput(ModelOutput):
 
     Args:
         loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
-            Total loss as the sum of the masked language modeling loss and the next sequence prediction
-            (classification) loss.
+            Total loss as the sum of pre-training losses.
+        mlm_loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+        The masked language modeling loss.
+        srp_loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+        The sentence representation prediction loss.
+        drp_loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+        The document representation prediction loss.
         prediction_logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
             Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
         document_representations (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
@@ -175,11 +180,47 @@ class HiTransformerForPreTrainingOutput(ModelOutput):
     """
 
     loss: Optional[torch.FloatTensor] = None
+    mlm_loss: Optional[torch.FloatTensor] = None
+    srp_loss: Optional[torch.FloatTensor] = None
+    drp_loss: Optional[torch.FloatTensor] = None
     prediction_logits: torch.FloatTensor = None
     document_representations: torch.FloatTensor = None
     sentence_representations: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+
+@dataclass
+class SentenceClassifierOutput(ModelOutput):
+    """
+    Base class for outputs of sentence classification models.
+
+    Args:
+        loss (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when `labels` is provided) :
+            Classification loss.
+        logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.num_labels)`):
+            Classification scores (before SoftMax).
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings, if the model has an embedding layer, +
+            one for the output of each layer) of shape `(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the optional initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+        sentence_attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+    """
+
+    loss: Optional[Tuple[torch.FloatTensor]] = None
+    logits: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+    sentence_attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
 class HiTransformerEmbeddings(nn.Module):
@@ -1123,11 +1164,13 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
             sent_representations = self.sentence_cls(sentence_outputs)
 
         total_loss = None
+        masked_lm_loss = None
         if labels is not None:
             loss_fct = CrossEntropyLoss()
             masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
             total_loss = masked_lm_loss
 
+        drp_loss = None
         if document_labels is not None:
             loss_fct = MSELoss()
             drp_loss = loss_fct(doc_representations, document_labels)
@@ -1136,6 +1179,7 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
             else:
                 total_loss = drp_loss
 
+        srp_loss = None
         if sentence_labels is not None:
             loss_fct = MSELoss()
             srp_loss = loss_fct(sent_representations.view(-1, self.config.hidden_size), sentence_labels.view(-1, self.config.hidden_size))
@@ -1150,13 +1194,15 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
 
         return HiTransformerForPreTrainingOutput(
             loss=total_loss,
+            mlm_loss=masked_lm_loss,
+            srp_loss=srp_loss,
+            drp_loss=drp_loss,
             prediction_logits=prediction_scores,
             document_representations=doc_representations,
             sentence_representations=sent_representations,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-
 
 
 @add_start_docstrings(
@@ -1256,6 +1302,88 @@ class HiTransformerForSequenceClassification(HiTransformerPreTrainedModel):
             logits=logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
+        )
+
+
+@add_start_docstrings(""" Hi-Transformer Model transformer for masked sentence representation prediction """,
+    HITRANSFORMER_START_DOCSTRING,
+)
+class HiTransformerModelForSentenceClassification(HiTransformerPreTrainedModel):
+    _keys_to_ignore_on_load_missing = [r"position_ids"]
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+        self.config = config
+
+        self.hi_transformer = HiTransformerModel(config)
+        self.sentencizer = HiTransformerSentencizer(config)
+        classifier_dropout = (
+            config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
+        )
+        self.dropout = nn.Dropout(classifier_dropout)
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_code_sample_docstrings(
+        processor_class=_TOKENIZER_FOR_DOC,
+        checkpoint=_CHECKPOINT_FOR_DOC,
+        output_type=SequenceClassifierOutput,
+        config_class=_CONFIG_FOR_DOC,
+    )
+    def forward(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        inputs_embeds=None,
+        labels=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+    ):
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
+            config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
+            `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
+        """
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = self.hi_transformer(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+        sequence_output = outputs[0]
+        sentence_outputs = self.sentencizer(sequence_output)
+        sentence_outputs = self.dropout(sentence_outputs)
+        logits = self.classifier(sentence_outputs)
+
+        loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+
+        if not return_dict:
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return SentenceClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+            sentence_attentions=outputs.sentence_attentions
         )
 
 
