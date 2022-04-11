@@ -1,44 +1,39 @@
-#!/bin/bash
-#normal cpu stuff: allocate cpus, memory
-#SBATCH --ntasks=1 --cpus-per-task=16
-#SBATCH -p gpu --gres=gpu:a100:1 --mem=16GB
-#SBATCH --time=60:00:00
-#SBATCH --output=hi-transformer.txt
-#SBATCH --job-name=hi-transformer
-
-hostname
-nvidia-smi
-echo $CUDA_VISIBLE_DEVICES
+export WANDB_PROJECT="hi-transformers"
+export XRT_TPU_CONFIG="localservice;0;localhost:51011"
 export PYTHONPATH=.
 
-BATCH_SIZE=2
-ACCUMULATION_STEPS=8
+LAYOUT='s1'
+MODEL_WARMUP_STRATEGY='grouped'
+MODEL_MAX_LENGTH=1024
+MAX_SENTENCES=8
 
-python language_modelling/run_pretraining.py \
-    --config_name data/hi-transformer \
-    --dataset_name multi_eurlex \
-    --dataset_config_name en \
-    --masked_language_modelling 1 \
-    --document_representation_prediction 1 \
-    --masked_sentence_representation_prediction 1 \
-    --do_train 1 \
-    --do_eval 1 \
-    --output_dir data/PLMs/hi-transformer-mlm \
-    --overwrite_output_dir 1 \
-    --evaluation_strategy epoch \
-    --save_strategy epoch \
+python3 models/hi_transformer/convert_bert_to_htf.py --layout ${LAYOUT} --warmup_strategy ${MODEL_WARMUP_STRATEGY} \
+    --max_sentences ${MAX_SENTENCES}
+
+python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm_stream.py \
+    --model_name_or_path data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY} \
+    --dataset_name ./data/wikipedia-dataset \
+    --dataset_config_name 20200501.en \
+    --do_train \
+    --do_eval \
+    --output_dir data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY}-mlm \
+    --overwrite_output_dir \
+    --logging_steps 500 \
+    --evaluation_strategy steps \
+    --eval_steps 10000 \
+    --save_strategy steps \
+    --save_steps 10000 \
     --save_total_limit 5 \
-    --num_train_epochs 3 \
-    --learning_rate 1e-5 \
-    --per_device_train_batch_size ${BATCH_SIZE} \
-    --per_device_eval_batch_size ${BATCH_SIZE} \
-    --fp16 \
-    --fp16_full_eval \
-    --gradient_accumulation_steps ${ACCUMULATION_STEPS} \
-    --eval_accumulation_steps ${ACCUMULATION_STEPS} \
-    --warmup_ratio 0.1 \
+    --max_steps 50000 \
+    --learning_rate 1e-4 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
+    --gradient_accumulation_steps 4 \
+    --eval_accumulation_steps 4 \
+    --lr_scheduler_type linear \
+    --warmup_ratio 0.10 \
     --weight_decay 0.01 \
-    --adam_epsilon 1e-6 \
-    --max_seq_length 8192 \
-    --max_train_samples 64 \
-    --max_eval_samples 64
+    --mlm_probability 0.15 \
+    --max_seq_length ${MODEL_MAX_LENGTH} \
+    --line_by_line \
+    --pad_to_max_length

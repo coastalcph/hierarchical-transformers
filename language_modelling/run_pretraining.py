@@ -197,7 +197,7 @@ class DataTrainingArguments:
         },
     )
     mslm: Optional[int] = field(
-        default=True,
+        default=False,
         metadata={
             "help": "Whether to add masked sentence language modelling in pre-training objectives"
         },
@@ -209,7 +209,7 @@ class DataTrainingArguments:
         },
     )
     srp: Optional[int] = field(
-        default=True,
+        default=False,
         metadata={
             "help": "Whether to add masked sentence representation prediction in pre-training objectives"
         },
