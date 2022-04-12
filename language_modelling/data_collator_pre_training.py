@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -176,11 +177,18 @@ class DataCollatorForPreTraining(DataCollatorMixin):
             probability_matrix = torch.full(sentence_mask.shape, self.mslm_probability)
             probability_matrix.masked_fill_(~sentence_mask, value=0.0)
             masked_indices = torch.bernoulli(probability_matrix).bool()
+            mlm_probability = copy.deepcopy(self.mlm_probability)
+            if masked_indices.int().sum() == 0:
+                available_indices = torch.arange(0, int(sentence_mask.int().sum())).numpy()
+                forced_masked_id = random.choice(available_indices)
+                masked_indices[forced_masked_id] = True
+                if sentence_mask.int().sum() == 1:
+                    mlm_probability = 0.15
             for sent_idx, mask in enumerate(masked_indices):
                 if mask:
                     # We sample most sub-words in each sentence for MSLM training (with high probability 60%)
                     padded_ids = (inputs[idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length] == self.tokenizer.pad_token_id).bool()
-                    sent_probability_matrix = torch.full((self.max_sentence_length-1, ), self.mlm_probability)
+                    sent_probability_matrix = torch.full((self.max_sentence_length-1, ), mlm_probability)
                     sent_probability_matrix.masked_fill_(padded_ids, value=0.0)
                     token_masked_indices = torch.bernoulli(sent_probability_matrix).bool()
                     # Mask sentence tokens except <cls> and non masked tokens
