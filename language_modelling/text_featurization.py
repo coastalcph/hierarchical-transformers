@@ -25,7 +25,7 @@ if __name__ == '__main__':
     from datasets import load_dataset
 
     # load dataset
-    documents = load_dataset("wikitext", "wikitext-103-raw-v1", split='test')['text']
+    dataset = load_dataset("../data/wikipedia-dataset", split='train', streaming=True)
 
     CUSTOM_TOK_FOLDER = '../data/custom-tokenizer'
 

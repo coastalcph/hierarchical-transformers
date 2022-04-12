@@ -156,7 +156,10 @@ class DataTrainingArguments:
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     mlm_probability: float = field(
-        default=0.15, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+        default=0.60, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+    )
+    mslm_probability: float = field(
+        default=0.20, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
     )
     line_by_line: bool = field(
         default=False,
@@ -491,7 +494,7 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["labels", "text"],
+                remove_columns=["text"],
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -506,7 +509,7 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["labels", "text"],
+                remove_columns=["text"],
             )
 
         # Main data processing function that will concatenate all texts from our dataset and generate chunks of
@@ -591,6 +594,7 @@ def main():
         srp=data_args.srp,
         drp=data_args.drp,
         mlm_probability=data_args.mlm_probability,
+        mslm_probability=data_args.mslm_probability,
         pad_to_multiple_of=config.max_sentence_length,
         max_sentence_length=config.max_sentence_length,
         tfidf_vect=tfidf_vect,

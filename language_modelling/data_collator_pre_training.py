@@ -70,7 +70,8 @@ class DataCollatorForPreTraining(DataCollatorMixin):
     mslm: bool = True
     drp: bool = True
     srp: bool = True
-    mlm_probability: float = 0.15
+    mlm_probability: float = 0.65
+    mslm_probability: float = 0.20
     pad_to_multiple_of: Optional[int] = None
     return_tensors: str = "pt"
     max_sentence_length: int = 64
@@ -168,25 +169,28 @@ class DataCollatorForPreTraining(DataCollatorMixin):
 
         for idx, input in enumerate(inputs):
             # Find padded sentences
-            sentence_mask = [attention_mask[idx][i:i + self.max_sentence_length].sum() != 0
+            sentence_mask = [attention_mask[idx][i:i + self.max_sentence_length].sum() != self.tokenizer.pad_token_id
                              for i in range(0, len(input), self.max_sentence_length)]
             sentence_mask = torch.tensor(sentence_mask, dtype=torch.bool)
             # We sample a few sentences in each sequence for MSLM training (with probability `self.mlm_probability`)
-            probability_matrix = torch.full(sentence_mask.shape, self.mlm_probability)
+            probability_matrix = torch.full(sentence_mask.shape, self.mslm_probability)
             probability_matrix.masked_fill_(~sentence_mask, value=0.0)
             masked_indices = torch.bernoulli(probability_matrix).bool()
             for sent_idx, mask in enumerate(masked_indices):
                 if mask:
-                    # Mask sentence tokens except <cls>
+                    # We sample most sub-words in each sentence for MSLM training (with high probability 60%)
+                    padded_ids = (inputs[idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length] == self.tokenizer.pad_token_id).bool()
+                    sent_probability_matrix = torch.full((self.max_sentence_length-1, ), self.mlm_probability)
+                    sent_probability_matrix.masked_fill_(padded_ids, value=0.0)
+                    token_masked_indices = torch.bernoulli(sent_probability_matrix).bool()
+                    # Mask sentence tokens except <cls> and non masked tokens
                     labels[idx][sent_idx * self.max_sentence_length] = -100
-                    # Find non-padded sentence tokens
-                    no_padded_ids = (inputs[idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length] != self.tokenizer.pad_token_id).bool()
-                    # Mask non-padded sentence tokens
-                    inputs[idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length][no_padded_ids] = self.tokenizer.mask_token_id
+                    labels[idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length][~token_masked_indices] = -100
+                    # Mask the rest
+                    inputs[idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length][token_masked_indices] = self.tokenizer.mask_token_id
                 else:
                     # We only compute loss on masked sentence tokens
-                    labels[idx][sent_idx * self.max_sentence_length:(sent_idx + 1) * self.max_sentence_length] \
-                        = -100
+                    labels[idx][sent_idx * self.max_sentence_length:(sent_idx + 1) * self.max_sentence_length] = -100
             # Do not compute loss on padded sequence tokens
             labels[idx][~attention_mask[idx].bool()] = -100
 
