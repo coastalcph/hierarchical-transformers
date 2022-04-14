@@ -162,10 +162,10 @@ class HiTransformerForPreTrainingOutput(ModelOutput):
         The document representation prediction loss.
         prediction_logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
             Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
-        document_representations (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
-            Document latent representations.
-        sentence_representations (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
-            Sentence latent representations.
+        document_prediction_logits (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
+            Prediction scores of the document prediction head (scores for each vocabulary token before Sigmoid).
+        sentence_prediction_logits (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
+            Prediction scores of the sentence prediction head (scores for each vocabulary token before Sigmoid).
         hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
             Tuple of `torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer) of
             shape `(batch_size, sequence_length, hidden_size)`.
@@ -184,8 +184,8 @@ class HiTransformerForPreTrainingOutput(ModelOutput):
     srp_loss: Optional[torch.FloatTensor] = None
     drp_loss: Optional[torch.FloatTensor] = None
     prediction_logits: torch.FloatTensor = None
-    document_representations: torch.FloatTensor = None
-    sentence_representations: torch.FloatTensor = None
+    document_prediction_logits: torch.FloatTensor = None
+    sentence_prediction_logits: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
@@ -649,11 +649,10 @@ class HiTransformerPooler(nn.Module):
         self.max_sentence_length = config.max_sentence_length
 
     def forward(self, hidden_states):
-        sentence_repr_hidden_states = hidden_states[:, ::self.max_sentence_length]
         if self.pooling == 'attentive':
-            pooled_output = self.attentive_pooling(sentence_repr_hidden_states)
+            pooled_output = self.attentive_pooling(hidden_states)
         else:
-            pooled_output = torch.max(sentence_repr_hidden_states, dim=1)[0]
+            pooled_output = torch.max(hidden_states, dim=1)[0]
         pooled_output = self.dense(pooled_output)
         pooled_output = self.activation(pooled_output)
         return pooled_output
@@ -1106,12 +1105,13 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         self.hi_transformer = HiTransformerModel(config)
         if self.config.mlm or self.config.mslm:
             self.lm_head = HiTransformerLMHead(config, sampled_decoding=False)
+        if self.config.srp or self.config.srp:
+            self.sentencizer = HiTransformerSentencizer(config)
         if self.config.drp:
             self.pooler = HiTransformerPooler(config, pooling='max')
-            self.document_cls = nn.Linear(config.hidden_size, config.hidden_size)
+            self.document_cls = nn.Linear(config.hidden_size, config.vocab_size)
         if self.config.srp:
-            self.sentencizer = HiTransformerSentencizer(config)
-            self.sentence_cls = nn.Linear(config.hidden_size, config.hidden_size)
+            self.sentence_cls = nn.Linear(config.hidden_size, config.vocab_size)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -1151,17 +1151,19 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         if self.config.mlm or self.config.mslm:
             prediction_scores = self.lm_head(sequence_output, labels)
 
-        # DRP
-        doc_representations = None
-        if self.config.drp:
-            pooled_outputs = self.pooler(sequence_output)
-            doc_representations = self.document_cls(pooled_outputs)
+        if self.config.srp or self.config.drp:
+            sentence_outputs = self.sentencizer(sequence_output)
 
         # SRP
-        sent_representations = None
+        sent_prediction_scores = None
         if self.config.srp:
-            sentence_outputs = self.sentencizer(sequence_output)
-            sent_representations = self.sentence_cls(sentence_outputs)
+            sent_prediction_scores = self.sentence_cls(sentence_outputs)
+
+        # DRP
+        doc_prediction_scores = None
+        if self.config.drp:
+            pooled_outputs = self.pooler(sentence_outputs)
+            doc_prediction_scores = self.document_cls(pooled_outputs)
 
         total_loss = None
         masked_lm_loss = None
@@ -1172,8 +1174,8 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
 
         drp_loss = None
         if document_labels is not None:
-            loss_fct = MSELoss()
-            drp_loss = loss_fct(doc_representations, document_labels)
+            loss_fct = BCEWithLogitsLoss()
+            drp_loss = loss_fct(doc_prediction_scores, document_labels)
             if labels is not None:
                 total_loss += drp_loss
             else:
@@ -1181,8 +1183,10 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
 
         srp_loss = None
         if sentence_labels is not None:
-            loss_fct = MSELoss()
-            srp_loss = loss_fct(sent_representations.view(-1, self.config.hidden_size), sentence_labels.view(-1, self.config.hidden_size))
+            loss_fct = BCEWithLogitsLoss(reduction='none')
+            sentence_mask = (sentence_labels.view(-1, self.config.vocab_size).sum(axis=-1) != 0)
+            srp_losses = loss_fct(sent_prediction_scores.view(-1, self.config.vocab_size), sentence_labels.view(-1, self.config.vocab_size))
+            srp_loss = srp_losses.mean(axis=-1)[sentence_mask].mean()
             if labels is not None or document_labels is not None:
                 total_loss += srp_loss
             else:
@@ -1198,8 +1202,8 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
             srp_loss=srp_loss,
             drp_loss=drp_loss,
             prediction_logits=prediction_scores,
-            document_representations=doc_representations,
-            sentence_representations=sent_representations,
+            document_prediction_logits=doc_prediction_scores,
+            sentence_prediction_logits=sent_prediction_scores,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )

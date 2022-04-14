@@ -156,9 +156,9 @@ class DataTrainingArguments:
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     mlm_probability: float = field(
-        default=0.60, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+        default=0.20, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
     )
-    mslm_probability: float = field(
+    ms_probability: float = field(
         default=0.20, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
     )
     line_by_line: bool = field(
@@ -215,6 +215,12 @@ class DataTrainingArguments:
         default=False,
         metadata={
             "help": "Whether to add masked sentence representation prediction in pre-training objectives"
+        },
+    )
+    tf_idf: Optional[int] = field(
+        default=False,
+        metadata={
+            "help": "Whether to use TF-IDF-based pre-training objectives"
         },
     )
 
@@ -494,7 +500,7 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["text"],
+                remove_columns=["text", "label"],
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -580,7 +586,7 @@ def main():
             return metric.compute(predictions=preds, references=labels)
 
     tfidf_vect, pca_solver = None, None
-    if data_args.drp or data_args.srp:
+    if data_args.drp or data_args.srp and data_args.tf_idf:
         tfidf_vect, pca_solver = train_text_featurizer(iter(train_dataset),
                                                        tokenizer=tokenizer,
                                                        hidden_units=config.hidden_size)
@@ -594,7 +600,7 @@ def main():
         srp=data_args.srp,
         drp=data_args.drp,
         mlm_probability=data_args.mlm_probability,
-        mslm_probability=data_args.mslm_probability,
+        ms_probability=data_args.ms_probability,
         pad_to_multiple_of=config.max_sentence_length,
         max_sentence_length=config.max_sentence_length,
         tfidf_vect=tfidf_vect,

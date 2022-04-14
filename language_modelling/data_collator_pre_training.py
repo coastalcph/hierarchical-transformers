@@ -71,8 +71,8 @@ class DataCollatorForPreTraining(DataCollatorMixin):
     mslm: bool = True
     drp: bool = True
     srp: bool = True
-    mlm_probability: float = 0.65
-    mslm_probability: float = 0.20
+    mlm_probability: float = 0.15
+    ms_probability: float = 0.20
     pad_to_multiple_of: Optional[int] = None
     return_tensors: str = "pt"
     max_sentence_length: int = 64
@@ -96,18 +96,45 @@ class DataCollatorForPreTraining(DataCollatorMixin):
 
         # If special token mask has been preprocessed, pop it from the dict.
         special_tokens_mask = batch.pop("special_tokens_mask", None)
-        original_inputs = copy.deepcopy(batch["input_ids"])
+        # Clone original input ids to consider in non-mlm tasks
+        original_input_ids = batch['input_ids'].clone()
+        if self.mslm or self.srp or self.drp:
+            sentence_masks = self.torch_mask_sentences(batch['attention_mask'])
         if self.mlm:
-            batch["input_ids"], batch["labels"] = self.torch_mask_tokens(
-                batch["input_ids"], special_tokens_mask=special_tokens_mask
-            )
+            batch["input_ids"], batch["labels"] = self.torch_mask_tokens(batch["input_ids"], special_tokens_mask=special_tokens_mask)
         if self.mslm:
-            batch["input_ids"], batch["labels"] = self.torch_mask_sentence_tokens(batch["input_ids"], batch["attention_mask"])
+            batch["input_ids"], batch["labels"] = self.torch_mask_sentence_tokens(batch["input_ids"], sentence_masks)
         if self.drp:
-            batch["document_labels"] = self.torch_doc_reprs(original_inputs)
+            batch["document_labels"] = self.torch_tf_document_labels(original_input_ids)
         if self.srp:
-            batch["sentence_labels"] = self.torch_sentence_reprs(original_inputs)
+            batch["input_ids"], batch["labels"], batch["sentence_labels"] = self.torch_tf_sentence_labels(batch["input_ids"], batch["labels"], original_input_ids, sentence_masks)
         return batch
+
+    def torch_tf_document_labels(self, inputs: Any) -> Any:
+        import torch
+        document_labels = torch.zeros((inputs.shape[0], len(self.tokenizer)), dtype=torch.float)
+        for doc_idx, _ in enumerate(inputs):
+            for input_id in torch.unique(inputs[doc_idx]):
+                document_labels[doc_idx][input_id] = 1
+
+        return document_labels
+
+    def torch_tf_sentence_labels(self, inputs: Any, labels: Any, original_inputs: Any, sentence_masks: Any) -> Any:
+        import torch
+        sentence_labels = torch.zeros((inputs.shape[0], sentence_masks.shape[1], len(self.tokenizer)), dtype=torch.float)
+        for doc_idx, sentence_mask in enumerate(sentence_masks):
+            for sent_idx, mask_id in enumerate(sentence_mask):
+                if mask_id:
+                    # compute sentence-level term frequencies
+                    for input_id in torch.unique(original_inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx+1) * self.max_sentence_length]):
+                        sentence_labels[doc_idx][sent_idx][input_id] = 1
+                    if sentence_mask.sum() > 1:
+                        # mask sentence tokens, except cls
+                        inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx + 1) * self.max_sentence_length] = self.tokenizer.mask_token_id
+                        # exclude sentence tokens from mlm loss
+                        labels[doc_idx][(sent_idx * self.max_sentence_length): (sent_idx + 1) * self.max_sentence_length] = -100
+
+        return inputs, labels, sentence_labels
 
     def torch_doc_reprs(self, inputs: Any) -> Any:
         import torch
@@ -126,6 +153,31 @@ class DataCollatorForPreTraining(DataCollatorMixin):
             sent_reprs.append(torch.Tensor(features))
 
         return torch.stack(sent_reprs)
+
+    def torch_mask_sentences(self, attention_mask: Any) -> Any:
+        """
+        Define masked sentences for masked sentence tasks.
+        """
+        import torch
+
+        sentence_masks = []
+
+        for idx, _ in enumerate(attention_mask):
+            # Find padded sentences
+            sentence_mask = [attention_mask[idx][i:i + self.max_sentence_length].sum() != self.tokenizer.pad_token_id
+                             for i in range(0, len(attention_mask[0]), self.max_sentence_length)]
+            sentence_mask = torch.tensor(sentence_mask, dtype=torch.bool)
+            # We sample a few sentences in each sequence for MSLM training (with probability `self.mlm_probability`)
+            probability_matrix = torch.full(sentence_mask.shape, self.ms_probability)
+            probability_matrix.masked_fill_(~sentence_mask, value=0.0)
+            masked_indices = torch.bernoulli(probability_matrix).bool()
+            if masked_indices.int().sum() == 0:
+                available_indices = torch.arange(0, int(sentence_mask.int().sum())).numpy()
+                forced_masked_id = random.choice(available_indices)
+                masked_indices[forced_masked_id] = True
+            sentence_masks.append(sentence_mask.int())
+
+        return torch.stack(sentence_masks)
 
     def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None) -> Tuple[Any, Any]:
         """
@@ -174,7 +226,7 @@ class DataCollatorForPreTraining(DataCollatorMixin):
                              for i in range(0, len(input), self.max_sentence_length)]
             sentence_mask = torch.tensor(sentence_mask, dtype=torch.bool)
             # We sample a few sentences in each sequence for MSLM training (with probability `self.mlm_probability`)
-            probability_matrix = torch.full(sentence_mask.shape, self.mslm_probability)
+            probability_matrix = torch.full(sentence_mask.shape, self.ms_probability)
             probability_matrix.masked_fill_(~sentence_mask, value=0.0)
             masked_indices = torch.bernoulli(probability_matrix).bool()
             mlm_probability = copy.deepcopy(self.mlm_probability)
