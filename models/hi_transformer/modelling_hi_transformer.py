@@ -662,13 +662,11 @@ class HiTransformerSentencizer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.activation = nn.Tanh()
         self.max_sentence_length = config.max_sentence_length
 
     def forward(self, hidden_states):
         sentence_repr_hidden_states = hidden_states[:, ::self.max_sentence_length]
         sentence_outputs = self.dense(sentence_repr_hidden_states)
-        sentence_outputs = self.activation(sentence_outputs)
         return sentence_outputs
 
 @add_start_docstrings(
@@ -857,6 +855,50 @@ class HiTransformerLMHead(nn.Module):
         logits[:, :, true_sample_ids] = true_sample_logits
 
         return logits
+
+
+class HiTransformerSentenceHead(nn.Module):
+    """Hi-Transformer Head for masked language modeling."""
+
+    def __init__(self, config, sampled_decoding=True):
+        super().__init__()
+        self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.decoder = nn.Linear(config.hidden_size, config.vocab_size)
+        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        self.decoder.bias = self.bias
+        self.sampled_decoding = sampled_decoding
+
+    def forward(self, features, labels, **kwargs):
+        x = gelu(features)
+        x = self.layer_norm(x)
+
+        # project back to size of vocabulary with bias
+        if self.sampled_decoding:
+            x, labels = self.sampled(x, labels)
+        else:
+            x = self.decoder(x)
+
+        return x, labels
+
+    def _tie_weights(self):
+        # To tie those two weights if they get disconnected (on TPU or when the bias is resized)
+        self.bias = self.decoder.bias
+
+    def sampled(self, inputs, labels):
+
+        # gather true label indices
+        label_ids = labels.sum(1).sum(0) != 0
+        # sample random indices
+        probability_matrix = torch.full(label_ids.shape, 0.01)
+        sample_ids = torch.bernoulli(probability_matrix).bool()
+        indices = label_ids + sample_ids
+        # gather weights and biases for true labels
+        weights = self.decoder.weight[indices, :]
+        bias = self.decoder.bias[indices]
+
+        # calculate logits for true labels and sample ids
+        true_logits = torch.matmul(inputs, torch.t(weights)) + bias
+        return true_logits, labels[:, :, indices]
 
 
 @add_start_docstrings("""Hi-Transformer Model with a `language modeling` head on top.""", HITRANSFORMER_START_DOCSTRING)
@@ -1111,7 +1153,7 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
             self.pooler = HiTransformerPooler(config, pooling='max')
             self.document_cls = nn.Linear(config.hidden_size, config.vocab_size)
         if self.config.srp:
-            self.sentence_cls = nn.Linear(config.hidden_size, config.vocab_size)
+            self.sentence_cls = HiTransformerSentenceHead(config, sampled_decoding=True)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -1157,7 +1199,7 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         # SRP
         sent_prediction_scores = None
         if self.config.srp:
-            sent_prediction_scores = self.sentence_cls(sentence_outputs)
+            sent_prediction_scores, sentence_labels = self.sentence_cls(sentence_outputs, sentence_labels)
 
         # DRP
         doc_prediction_scores = None
@@ -1170,7 +1212,7 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         if labels is not None:
             loss_fct = CrossEntropyLoss()
             masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
-            total_loss = masked_lm_loss
+            total_loss = masked_lm_loss.clone()
 
         drp_loss = None
         if document_labels is not None:
@@ -1184,8 +1226,8 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         srp_loss = None
         if sentence_labels is not None:
             loss_fct = BCEWithLogitsLoss(reduction='none')
-            sentence_mask = (sentence_labels.view(-1, self.config.vocab_size).sum(axis=-1) != 0)
-            srp_losses = loss_fct(sent_prediction_scores.view(-1, self.config.vocab_size), sentence_labels.view(-1, self.config.vocab_size))
+            sentence_mask = (sentence_labels.view(-1, sentence_labels.shape[-1]).sum(axis=-1) != 0)
+            srp_losses = loss_fct(sent_prediction_scores.view(-1, sentence_labels.shape[-1]), sentence_labels.view(-1, sentence_labels.shape[-1]))
             srp_loss = srp_losses.mean(axis=-1)[sentence_mask].mean()
             if labels is not None or document_labels is not None:
                 total_loss += srp_loss

@@ -126,9 +126,8 @@ class DataCollatorForPreTraining(DataCollatorMixin):
             for sent_idx, mask_id in enumerate(sentence_mask):
                 if mask_id:
                     # compute sentence-level term frequencies
-                    for input_id in torch.unique(original_inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx+1) * self.max_sentence_length]):
-                        if input_id != 0:
-                            sentence_labels[doc_idx][sent_idx][input_id] = 1
+                    unique_ids = torch.unique(original_inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx+1) * self.max_sentence_length])
+                    sentence_labels[doc_idx][sent_idx][unique_ids] = 1
                     if sentence_mask.sum() > 1:
                         # mask sentence tokens, except cls and pads
                         non_padded_ids = (inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1:(sent_idx + 1) * self.max_sentence_length] != self.tokenizer.pad_token_id).bool()
