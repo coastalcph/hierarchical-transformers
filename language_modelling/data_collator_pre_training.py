@@ -134,7 +134,7 @@ class DataCollatorForPreTraining(DataCollatorMixin):
                         non_padded_ids = (inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1:(sent_idx + 1) * self.max_sentence_length] != self.tokenizer.pad_token_id).bool()
                         inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx + 1) * self.max_sentence_length][non_padded_ids] = self.tokenizer.mask_token_id
                         # exclude sentence tokens from mlm loss
-                        labels[doc_idx][(sent_idx * self.max_sentence_length): (sent_idx + 1) * self.max_sentence_length][non_padded_ids] = -100
+                        labels[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx + 1) * self.max_sentence_length][non_padded_ids] = -100
 
             # mlm in a few words for safety
             available_indices = torch.arange(0, inputs[doc_idx].shape[0]).numpy()
