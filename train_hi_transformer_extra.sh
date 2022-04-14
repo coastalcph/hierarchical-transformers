@@ -35,7 +35,7 @@ python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_pre
     --max_seq_length ${MODEL_MAX_LENGTH} \
     --line_by_line \
     --pad_to_max_length \
-    --srp 1
+    --srp 1 \
     --mlm 1
 
 

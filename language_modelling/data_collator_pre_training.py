@@ -127,12 +127,20 @@ class DataCollatorForPreTraining(DataCollatorMixin):
                 if mask_id:
                     # compute sentence-level term frequencies
                     for input_id in torch.unique(original_inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx+1) * self.max_sentence_length]):
-                        sentence_labels[doc_idx][sent_idx][input_id] = 1
+                        if input_id != 0:
+                            sentence_labels[doc_idx][sent_idx][input_id] = 1
                     if sentence_mask.sum() > 1:
-                        # mask sentence tokens, except cls
-                        inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx + 1) * self.max_sentence_length] = self.tokenizer.mask_token_id
+                        # mask sentence tokens, except cls and pads
+                        non_padded_ids = (inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1:(sent_idx + 1) * self.max_sentence_length] != self.tokenizer.pad_token_id).bool()
+                        inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx + 1) * self.max_sentence_length][non_padded_ids] = self.tokenizer.mask_token_id
                         # exclude sentence tokens from mlm loss
-                        labels[doc_idx][(sent_idx * self.max_sentence_length): (sent_idx + 1) * self.max_sentence_length] = -100
+                        labels[doc_idx][(sent_idx * self.max_sentence_length): (sent_idx + 1) * self.max_sentence_length][non_padded_ids] = -100
+
+            # mlm in a few words for safety
+            available_indices = torch.arange(0, inputs[doc_idx].shape[0]).numpy()
+            forced_masked_id = random.choice(available_indices)
+            inputs[doc_idx][forced_masked_id] = original_inputs[doc_idx][forced_masked_id]
+            labels[doc_idx][forced_masked_id] = original_inputs[doc_idx][forced_masked_id]
 
         return inputs, labels, sentence_labels
 
@@ -170,12 +178,12 @@ class DataCollatorForPreTraining(DataCollatorMixin):
             # We sample a few sentences in each sequence for MSLM training (with probability `self.mlm_probability`)
             probability_matrix = torch.full(sentence_mask.shape, self.ms_probability)
             probability_matrix.masked_fill_(~sentence_mask, value=0.0)
-            masked_indices = torch.bernoulli(probability_matrix).bool()
-            if masked_indices.int().sum() == 0:
+            masked_indices = torch.bernoulli(probability_matrix).int()
+            if masked_indices.sum() == 0:
                 available_indices = torch.arange(0, int(sentence_mask.int().sum())).numpy()
                 forced_masked_id = random.choice(available_indices)
-                masked_indices[forced_masked_id] = True
-            sentence_masks.append(sentence_mask.int())
+                masked_indices[forced_masked_id] = 1
+            sentence_masks.append(masked_indices)
 
         return torch.stack(sentence_masks)
 
