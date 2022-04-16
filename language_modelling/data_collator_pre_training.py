@@ -103,7 +103,7 @@ class DataCollatorForPreTraining(DataCollatorMixin):
         if self.mlm:
             batch["input_ids"], batch["labels"] = self.torch_mask_tokens(batch["input_ids"], special_tokens_mask=special_tokens_mask)
         if self.mslm:
-            batch["input_ids"], batch["labels"] = self.torch_mask_sentence_tokens(batch["input_ids"], sentence_masks)
+            batch["input_ids"], batch["labels"] = self.torch_mask_sentence_tokens(batch["input_ids"], batch['attention_mask'])
         if self.drp:
             batch["document_labels"] = self.torch_tf_document_labels(original_input_ids)
         if self.srp:
