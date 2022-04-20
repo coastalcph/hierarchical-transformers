@@ -24,6 +24,7 @@ https://huggingface.co/models?filter=fill-mask
 import logging
 import math
 import os
+import pickle
 import sys
 from dataclasses import dataclass, field
 from itertools import chain
@@ -47,7 +48,6 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from language_modelling.data_collator_pre_training import DataCollatorForPreTraining
-from language_modelling.text_featurization import train_text_featurizer
 from models.hi_transformer import HiTransformerModelForPreTraining, HiTransformerTokenizer, HiTransformerConfig
 from language_modelling.trainer import Trainer
 
@@ -217,10 +217,10 @@ class DataTrainingArguments:
             "help": "Whether to add masked sentence representation prediction in pre-training objectives"
         },
     )
-    tf_idf: Optional[int] = field(
-        default=False,
+    sentence_bert_path: Optional[str] = field(
+        default=None,
         metadata={
-            "help": "Whether to use TF-IDF-based pre-training objectives"
+            "help": "The name of the sentence-bert to use (via the transforrmers library)"
         },
     )
 
@@ -500,7 +500,7 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["text"],
+                remove_columns=["text"] #, 'eurovoc_concepts', 'title', 'celex_id'],
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -585,11 +585,10 @@ def main():
             preds = preds[mask]
             return metric.compute(predictions=preds, references=labels)
 
-    tfidf_vect, pca_solver = None, None
-    if data_args.drp or data_args.srp and data_args.tf_idf:
-        tfidf_vect, pca_solver = train_text_featurizer(iter(train_dataset),
-                                                       tokenizer=tokenizer,
-                                                       hidden_units=config.hidden_size)
+    sentence_embeddings = None
+    if data_args.drp or data_args.srp and data_args.sentence_bert_path:
+        with open('./data/wikipedia-dataset/sentence_embeddings.pkl', 'wb') as fin:
+            sentence_embeddings = pickle.load(fin)
 
     # Data collator
     # This one will take care of pre-training labels
@@ -603,8 +602,7 @@ def main():
         ms_probability=data_args.ms_probability,
         pad_to_multiple_of=config.max_sentence_length,
         max_sentence_length=config.max_sentence_length,
-        tfidf_vect=tfidf_vect,
-        pca_solver=pca_solver
+        sentence_embeddings=sentence_embeddings,
     )
 
     # Initialize our Trainer

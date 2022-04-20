@@ -1,17 +1,25 @@
 import pickle
 import random
 
+import nltk
 import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import PCA
+from models.hi_transformer import HiTransformerTokenizer
 import warnings
 warnings.filterwarnings("ignore")
 
 
-def train_text_featurizer(documents, tokenizer, hidden_units=768):
+def train_text_featurizer(documents, tokenizer_path='google/bert_uncased_L-6_H-256_A-4', hidden_units=768):
 
     def tokenize(document: str):
-        return tokenizer.tokenize(document)
+        return tokenizer.tokenize(document,
+                                  padding=False,
+                                  truncation=True,
+                                  max_length=1024)
+
+    # init tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, model_max_length=1024)
 
     # init tfidf vectorizer
     vocab = [(key, value) for (key, value) in tokenizer.vocab.items()]
@@ -36,10 +44,13 @@ def train_text_featurizer(documents, tokenizer, hidden_units=768):
     print('PCA SOLVER SAVED!')
 
 
-def learn_idfs(documents, tokenizer):
+def learn_idfs(documents, tokenizer_path='google/bert_uncased_L-6_H-256_A-4'):
 
     def tokenize(document: str):
         return tokenizer.tokenize(document)
+
+    # init tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, model_max_length=1024)
 
     # init tfidf vectorizer
     vocab = [(key, value) for (key, value) in tokenizer.vocab.items()]
@@ -52,11 +63,45 @@ def learn_idfs(documents, tokenizer):
 
     with open('./data/wikipedia-dataset/idf_scores.pkl', 'wb') as file:
         pickle.dump(tfidf_vectorizer.idf_, file)
-    print('IDFs SAVED!')
 
-    # with open('./data/wikipedia-dataset/idf_terms.pkl', 'wb') as file:
-    #     idf_terms = {term: idx for term, idx in enumerate(tfidf_vectorizer.get_feature_names_out())}
-    #     pickle.dump(idf_terms, file)
+
+def embed_sentences(documents, model_path='all-MiniLM-L6-v2'):
+    from sentence_transformers import SentenceTransformer
+
+    # Define the model
+    model = SentenceTransformer(model_path)
+
+    # Start the multi-process pool on all available CUDA devices
+    pool = model.start_multi_process_pool()
+
+    # Sub-sample sentences
+    grouped_sentences = []
+    for document in documents:
+        doc_sentences = nltk.sent_tokenize(' '.join(document.split()[:1024]))
+        # Build grouped sentences up to 100 words
+        temp_sentence = ''
+        for doc_sentence in doc_sentences:
+            if len(temp_sentence.split()) + len(doc_sentence.split()) <= 100:
+                temp_sentence += ' ' + doc_sentence
+            else:
+                if len(temp_sentence):
+                    grouped_sentences.append(temp_sentence)
+                temp_sentence = doc_sentence
+        if len(temp_sentence):
+            grouped_sentences.append(temp_sentence)
+    del documents
+
+    # Compute the embeddings using the multi-process pool
+    sentence_embeddings = model.encode_multi_process(grouped_sentences, pool)
+    print("Embeddings computed. Shape:", sentence_embeddings.shape)
+
+    # Optional: Stop the proccesses in the pool
+    model.stop_multi_process_pool(pool)
+
+    with open('../data/wikipedia-dataset/sentence_embeddings.pkl', 'wb') as file:
+        pickle.dump(sentence_embeddings, file)
+
+    print('SENTENCE EMBEDDINGS DONE!')
 
 
 if __name__ == '__main__':
@@ -64,15 +109,13 @@ if __name__ == '__main__':
     from datasets import load_dataset
 
     # load dataset
-    dataset = load_dataset("./data/wikipedia-dataset", split='train')
+    dataset = load_dataset("lex_glue", "eurlex", split='train')
     dataset = dataset['text']
-    subset = random.sample(range(len(dataset)), k=500000)
-    CUSTOM_TOK_FOLDER = 'google/bert_uncased_L-6_H-256_A-4'
+    subset = random.sample(range(len(dataset)), k=100)
     dataset_small = []
     for i in tqdm.tqdm(subset):
         dataset_small.append(dataset[i])
 
     # re-load tokenizer and test
-    tokenizer = AutoTokenizer.from_pretrained(CUSTOM_TOK_FOLDER,  model_max_length=1024)
-    train_text_featurizer(documents=dataset_small, tokenizer=tokenizer, hidden_units=256)
+    embed_sentences(documents=dataset_small)
 

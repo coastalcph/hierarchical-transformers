@@ -802,7 +802,7 @@ class HiTransformerModel(HiTransformerPreTrainedModel):
 class HiTransformerLMHead(nn.Module):
     """Hi-Transformer Head for masked language modeling."""
 
-    def __init__(self, config, sampled_decoding=False):
+    def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
@@ -810,18 +810,14 @@ class HiTransformerLMHead(nn.Module):
         self.decoder = nn.Linear(config.hidden_size, config.vocab_size)
         self.bias = nn.Parameter(torch.zeros(config.vocab_size))
         self.decoder.bias = self.bias
-        self.sampled_decoding = sampled_decoding
 
-    def forward(self, features, labels, **kwargs):
+    def forward(self, features, **kwargs):
         x = self.dense(features)
         x = gelu(x)
         x = self.layer_norm(x)
 
         # project back to size of vocabulary with bias
-        if self.sampled_decoding:
-            x = self.sampled(x, labels)
-        else:
-            x = self.decoder(x)
+        x = self.decoder(x)
 
         return x
 
@@ -829,76 +825,28 @@ class HiTransformerLMHead(nn.Module):
         # To tie those two weights if they get disconnected (on TPU or when the bias is resized)
         self.bias = self.decoder.bias
 
-    def sampled(self, inputs, labels):
-        sample_ids = torch.randint(self.decoder.out_features, size=(1000,))
-
-        # gather weights and biases for true labels
-        label_ids = torch.unique(labels.view(-1))[1:]
-        true_weights = self.decoder.weight[label_ids, :]
-        true_bias = self.decoder.bias[label_ids]
-
-        # gather weigth and biases for sample ids
-        sample_weights = self.decoder.weight[sample_ids, :]
-        sample_bias = self.decoder.bias[sample_ids]
-
-        # calculate logits for true labels and sample ids
-        true_logits = torch.matmul(inputs, torch.t(true_weights)) + true_bias
-        sample_logits = torch.matmul(inputs, torch.t(sample_weights)) + sample_bias
-
-        # merge logits for true labels and sample ids
-        true_sample_logits = torch.cat((true_logits, sample_logits), dim=-1)
-        true_sample_ids = torch.cat((label_ids, sample_ids))
-
-        # recreate full-scale logits
-        logits = torch.ones((inputs.size(0), inputs.size(1), self.decoder.out_features), dtype=true_logits.dtype)
-        logits *= -1e-3
-        logits[:, :, true_sample_ids] = true_sample_logits
-
-        return logits
-
 
 class HiTransformerSentenceHead(nn.Module):
     """Hi-Transformer Head for masked language modeling."""
 
-    def __init__(self, config, sampled_decoding=True):
+    def __init__(self, config):
         super().__init__()
         self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.decoder = nn.Linear(config.hidden_size, config.vocab_size)
         self.bias = nn.Parameter(torch.zeros(config.vocab_size))
         self.decoder.bias = self.bias
-        self.sampled_decoding = sampled_decoding
 
-    def forward(self, features, labels, **kwargs):
+    def forward(self, features):
         x = gelu(features)
         x = self.layer_norm(x)
 
-        # project back to size of vocabulary with bias
-        if self.sampled_decoding:
-            x, labels = self.sampled(x, labels)
-        else:
-            x = self.decoder(x)
+        x = self.decoder(x)
 
-        return x, labels
+        return x
 
     def _tie_weights(self):
         # To tie those two weights if they get disconnected (on TPU or when the bias is resized)
         self.bias = self.decoder.bias
-
-    def sampled(self, inputs, labels):
-
-        # gather true label indices
-        label_ids = labels.sum(1).sum(0) != 0
-        # sample random indices
-        probability_matrix = torch.full(label_ids.shape, 0.01)
-        sample_ids = torch.bernoulli(probability_matrix).bool()
-        indices = label_ids + sample_ids
-        # gather weights and biases for true labels
-        weights = self.decoder.weight[indices, :]
-        bias = self.decoder.bias[indices]
-
-        # calculate logits for true labels and sample ids
-        true_logits = torch.matmul(inputs, torch.t(weights)) + bias
-        return true_logits, labels[:, :, indices]
 
 
 @add_start_docstrings("""Hi-Transformer Model with a `language modeling` head on top.""", HITRANSFORMER_START_DOCSTRING)
@@ -1146,14 +1094,14 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
 
         self.hi_transformer = HiTransformerModel(config)
         if self.config.mlm or self.config.mslm:
-            self.lm_head = HiTransformerLMHead(config, sampled_decoding=False)
+            self.lm_head = HiTransformerLMHead(config)
         if self.config.srp or self.config.srp:
             self.sentencizer = HiTransformerSentencizer(config)
         if self.config.drp:
             self.pooler = HiTransformerPooler(config, pooling='max')
             self.document_cls = nn.Linear(config.hidden_size, config.vocab_size)
         if self.config.srp:
-            self.sentence_cls = HiTransformerSentenceHead(config, sampled_decoding=True)
+            self.sentence_cls = HiTransformerSentenceHead(config)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -1168,6 +1116,8 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         labels=None,
         document_labels=None,
         sentence_labels=None,
+        sentence_masks=None,
+        sentence_mask_ids=None,
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
@@ -1191,21 +1141,23 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         # MLM
         prediction_scores = None
         if self.config.mlm or self.config.mslm:
-            prediction_scores = self.lm_head(sequence_output, labels)
+            prediction_scores = self.lm_head(sequence_output)
 
         if self.config.srp or self.config.drp:
             sentence_outputs = self.sentencizer(sequence_output)
 
         # SRP
-        sent_prediction_scores = None
+        sentence_prediction_scores = None
         if self.config.srp:
-            sent_prediction_scores, sentence_labels = self.sentence_cls(sentence_outputs, sentence_labels)
+            sentence_prediction_scores = self.sentence_cls(sentence_outputs)
+            if sentence_mask_ids is not None:
+                sentence_prediction_scores = sentence_prediction_scores[:, :, sentence_mask_ids].clone()
 
         # DRP
-        doc_prediction_scores = None
+        document_prediction_scores = None
         if self.config.drp:
             pooled_outputs = self.pooler(sentence_outputs)
-            doc_prediction_scores = self.document_cls(pooled_outputs)
+            document_prediction_scores = self.document_cls(pooled_outputs)
 
         total_loss = None
         masked_lm_loss = None
@@ -1217,7 +1169,7 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         drp_loss = None
         if document_labels is not None:
             loss_fct = BCEWithLogitsLoss()
-            drp_loss = loss_fct(doc_prediction_scores, document_labels)
+            drp_loss = loss_fct(document_prediction_scores, document_labels)
             if labels is not None:
                 total_loss += drp_loss
             else:
@@ -1226,9 +1178,8 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         srp_loss = None
         if sentence_labels is not None:
             loss_fct = BCEWithLogitsLoss(reduction='none')
-            sentence_mask = (sentence_labels.view(-1, sentence_labels.shape[-1]).sum(axis=-1) != 0)
-            srp_losses = loss_fct(sent_prediction_scores.view(-1, sentence_labels.shape[-1]), sentence_labels.view(-1, sentence_labels.shape[-1]))
-            srp_loss = srp_losses.mean(axis=-1)[sentence_mask].mean()
+            srp_losses = loss_fct(sentence_prediction_scores.view(-1, sentence_labels.shape[-1]), sentence_labels.view(-1, sentence_labels.shape[-1]))
+            srp_loss = srp_losses[sentence_masks.view(-1).bool()].mean()
             if labels is not None or document_labels is not None:
                 total_loss += srp_loss
             else:
@@ -1244,8 +1195,8 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
             srp_loss=srp_loss,
             drp_loss=drp_loss,
             prediction_logits=prediction_scores,
-            document_prediction_logits=doc_prediction_scores,
-            sentence_prediction_logits=sent_prediction_scores,
+            document_prediction_logits=document_prediction_scores,
+            sentence_prediction_logits=sentence_prediction_scores,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )

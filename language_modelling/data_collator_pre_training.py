@@ -65,12 +65,11 @@ class DataCollatorForPreTraining(DataCollatorMixin):
     </Tip>"""
 
     tokenizer: PreTrainedTokenizerBase
-    tfidf_vect: TfidfVectorizer
-    pca_solver: PCA
     mlm: bool = True
     mslm: bool = True
     drp: bool = True
     srp: bool = True
+    sentence_embeddings: Optional[List] = None
     mlm_probability: float = 0.15
     ms_probability: float = 0.20
     pad_to_multiple_of: Optional[int] = None
@@ -99,35 +98,70 @@ class DataCollatorForPreTraining(DataCollatorMixin):
         # Clone original input ids to consider in non-mlm tasks
         original_input_ids = batch['input_ids'].clone()
         if self.mslm or self.srp or self.drp:
-            sentence_masks = self.torch_mask_sentences(batch['attention_mask'])
+            batch['sentence_masks'] = self.torch_mask_sentences(batch['attention_mask'])
         if self.mlm:
             batch["input_ids"], batch["labels"] = self.torch_mask_tokens(batch["input_ids"], special_tokens_mask=special_tokens_mask)
         if self.mslm:
-            batch["input_ids"], batch["labels"] = self.torch_mask_sentence_tokens(batch["input_ids"], sentence_masks)
+            batch["input_ids"], batch["labels"] = self.torch_mask_sentence_tokens(batch["input_ids"], batch['sentence_masks'])
+        if self.srp and self.sentence_embeddings:
+            batch["input_ids"], batch["labels"], batch["sentence_labels"] = self.torch_sentence_reprs(batch["input_ids"], batch["labels"], original_input_ids, batch['sentence_masks'])
+        else:
+            batch["input_ids"], batch["labels"], batch["sentence_labels"], batch['sentence_mask_ids'] = self.torch_bow_sentence_labels(batch["input_ids"], batch["labels"], original_input_ids, batch['sentence_masks'])
         if self.drp:
-            batch["document_labels"] = self.torch_tf_document_labels(original_input_ids)
-        if self.srp:
-            batch["input_ids"], batch["labels"], batch["sentence_labels"] = self.torch_tf_sentence_labels(batch["input_ids"], batch["labels"], original_input_ids, sentence_masks)
+            batch["document_labels"] = self.torch_bow_document_labels(batch["sentence_labels"])
+
         return batch
 
-    def torch_tf_document_labels(self, inputs: Any) -> Any:
-        import torch
-        document_labels = torch.zeros((inputs.shape[0], len(self.tokenizer)), dtype=torch.float)
-        for doc_idx, _ in enumerate(inputs):
-            for input_id in torch.unique(inputs[doc_idx]):
-                document_labels[doc_idx][input_id] = 1
-
+    def torch_bow_document_labels(self, sentence_labels: Any) -> Any:
+        document_labels = sentence_labels.sum(axis=1).bool().int()
         return document_labels
 
-    def torch_tf_sentence_labels(self, inputs: Any, labels: Any, original_inputs: Any, sentence_masks: Any) -> Any:
+    def torch_bow_sentence_labels(self, inputs: Any, labels: Any, original_inputs: Any, sentence_masks: Any) -> Any:
         import torch
+        # sample random word indices
+        probability_matrix = torch.full((len(self.tokenizer),), 0.01)
+        sample_ids = torch.bernoulli(probability_matrix).bool()
+        # build sentence labels
         sentence_labels = torch.zeros((inputs.shape[0], sentence_masks.shape[1], len(self.tokenizer)), dtype=torch.float)
         for doc_idx, sentence_mask in enumerate(sentence_masks):
             for sent_idx, mask_id in enumerate(sentence_mask):
                 if mask_id:
-                    # compute sentence-level term frequencies
+                    # compute sentence-level bow representations
                     unique_ids = torch.unique(original_inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx+1) * self.max_sentence_length])
                     sentence_labels[doc_idx][sent_idx][unique_ids] = 1
+                    # include sentence ids in sampled ids
+                    sample_ids[unique_ids] = True
+                    if sentence_mask.sum() > 1:
+                        # mask sentence tokens, except cls and pads
+                        non_padded_ids = (inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1:(sent_idx + 1) * self.max_sentence_length] != self.tokenizer.pad_token_id).bool()
+                        inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx + 1) * self.max_sentence_length][non_padded_ids] = self.tokenizer.mask_token_id
+                        # exclude sentence tokens from mlm loss
+                        labels[doc_idx][(sent_idx * self.max_sentence_length) + 1: (sent_idx + 1) * self.max_sentence_length][non_padded_ids] = -100
+
+            # mlm in a single word for safety
+            available_indices = torch.arange(0, inputs[doc_idx].shape[0]).numpy()
+            forced_masked_id = random.choice(available_indices)
+            inputs[doc_idx][forced_masked_id] = original_inputs[doc_idx][forced_masked_id]
+            labels[doc_idx][forced_masked_id] = original_inputs[doc_idx][forced_masked_id]
+
+        return inputs, labels, sentence_labels[:, :, sample_ids], sample_ids
+
+    def torch_doc_reprs(self, inputs: Any) -> Any:
+        import torch
+        tf_idfs = self.tfidf_vect.transform(self.tokenizer.batch_decode(inputs))
+        features = self.pca_solver.transform(tf_idfs.toarray())
+        doc_reps = torch.Tensor(features)
+
+        return doc_reps
+
+    def torch_sentence_reprs(self, inputs: Any, labels: Any, original_inputs: Any, sentence_masks: Any) -> Any:
+        import torch
+        sent_representations = torch.zeros((inputs.shape[0], sentence_masks.shape[1], self.sentence_embeddings), dtype=torch.float)
+        for doc_idx, sentence_mask in enumerate(sentence_masks):
+            for sent_idx, mask_id in enumerate(sentence_mask):
+                if mask_id:
+                    masked_sentence = self.tokenizer.batch_decode(original_inputs[doc_idx][(sent_idx * self.max_sentence_length): (sent_idx+1) * self.max_sentence_length])
+                    sent_representations[doc_idx][sent_idx] = torch.Tensor(features)
                     if sentence_mask.sum() > 1:
                         # mask sentence tokens, except cls and pads
                         non_padded_ids = (inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1:(sent_idx + 1) * self.max_sentence_length] != self.tokenizer.pad_token_id).bool()
@@ -141,25 +175,7 @@ class DataCollatorForPreTraining(DataCollatorMixin):
             inputs[doc_idx][forced_masked_id] = original_inputs[doc_idx][forced_masked_id]
             labels[doc_idx][forced_masked_id] = original_inputs[doc_idx][forced_masked_id]
 
-        return inputs, labels, sentence_labels
-
-    def torch_doc_reprs(self, inputs: Any) -> Any:
-        import torch
-        tf_idfs = self.tfidf_vect.transform(self.tokenizer.batch_decode(inputs))
-        features = self.pca_solver.transform(tf_idfs.toarray())
-        doc_reps = torch.Tensor(features)
-
-        return doc_reps
-
-    def torch_sentence_reprs(self, inputs: Any) -> Any:
-        import torch
-        sent_reprs = []
-        for sample_ids in inputs:
-            tf_idfs = self.tfidf_vect.transform(self.tokenizer.batch_decode([sample_ids[i:i + self.max_sentence_length] for i in range(0, len(sample_ids), self.max_sentence_length)]))
-            features = self.pca_solver.transform(tf_idfs.toarray())
-            sent_reprs.append(torch.Tensor(features))
-
-        return torch.stack(sent_reprs)
+        return inputs, labels, sent_representations
 
     def torch_mask_sentences(self, attention_mask: Any) -> Any:
         """
@@ -219,7 +235,7 @@ class DataCollatorForPreTraining(DataCollatorMixin):
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
         return inputs, labels
 
-    def torch_mask_sentence_tokens(self, inputs: Any, attention_mask: Any) -> Tuple[Any, Any]:
+    def torch_mask_sentence_tokens(self, inputs: Any, attention_masks: Any, sentence_masks: Any) -> Tuple[Any, Any]:
         """
         Prepare masked sentence tokens inputs/labels for masked sentence language modeling.
         """
@@ -227,39 +243,24 @@ class DataCollatorForPreTraining(DataCollatorMixin):
 
         labels = inputs.clone()
 
-        for idx, input in enumerate(inputs):
-            # Find padded sentences
-            sentence_mask = [attention_mask[idx][i:i + self.max_sentence_length].sum() != self.tokenizer.pad_token_id
-                             for i in range(0, len(input), self.max_sentence_length)]
-            sentence_mask = torch.tensor(sentence_mask, dtype=torch.bool)
-            # We sample a few sentences in each sequence for MSLM training (with probability `self.mlm_probability`)
-            probability_matrix = torch.full(sentence_mask.shape, self.ms_probability)
-            probability_matrix.masked_fill_(~sentence_mask, value=0.0)
-            masked_indices = torch.bernoulli(probability_matrix).bool()
-            mlm_probability = copy.deepcopy(self.mlm_probability)
-            if masked_indices.int().sum() == 0:
-                available_indices = torch.arange(0, int(sentence_mask.int().sum())).numpy()
-                forced_masked_id = random.choice(available_indices)
-                masked_indices[forced_masked_id] = True
-                if sentence_mask.int().sum() == 1:
-                    mlm_probability = 0.15
-            for sent_idx, mask in enumerate(masked_indices):
+        for doc_idx, sentence_mask in enumerate(sentence_masks):
+            for sent_idx, mask in enumerate(sentence_mask):
                 if mask:
                     # We sample most sub-words in each sentence for MSLM training (with high probability 60%)
-                    padded_ids = (inputs[idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length] == self.tokenizer.pad_token_id).bool()
-                    sent_probability_matrix = torch.full((self.max_sentence_length-1, ), mlm_probability)
+                    padded_ids = (inputs[doc_idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length] == self.tokenizer.pad_token_id).bool()
+                    sent_probability_matrix = torch.full((self.max_sentence_length-1, ), self.mlm_probability)
                     sent_probability_matrix.masked_fill_(padded_ids, value=0.0)
                     token_masked_indices = torch.bernoulli(sent_probability_matrix).bool()
                     # Mask sentence tokens except <cls> and non masked tokens
-                    labels[idx][sent_idx * self.max_sentence_length] = -100
-                    labels[idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length][~token_masked_indices] = -100
+                    labels[doc_idx][sent_idx * self.max_sentence_length] = -100
+                    labels[doc_idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length][~token_masked_indices] = -100
                     # Mask the rest
-                    inputs[idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length][token_masked_indices] = self.tokenizer.mask_token_id
+                    inputs[doc_idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length][token_masked_indices] = self.tokenizer.mask_token_id
                 else:
                     # We only compute loss on masked sentence tokens
-                    labels[idx][sent_idx * self.max_sentence_length:(sent_idx + 1) * self.max_sentence_length] = -100
+                    labels[doc_idx][sent_idx * self.max_sentence_length:(sent_idx + 1) * self.max_sentence_length] = -100
             # Do not compute loss on padded sequence tokens
-            labels[idx][~attention_mask[idx].bool()] = -100
+            labels[doc_idx][~attention_masks[doc_idx].bool()] = -100
 
         return inputs, labels
 
