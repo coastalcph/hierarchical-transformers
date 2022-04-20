@@ -510,7 +510,7 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["text", 'eurovoc_concepts', 'title', 'celex_id'],
+                remove_columns=["text"] #, 'eurovoc_concepts', 'title', 'celex_id'],
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
