@@ -1,6 +1,7 @@
 import warnings
 
 import torch
+import time
 from transformers import AutoModelForMaskedLM, AutoConfig
 
 from data import DATA_DIR
@@ -23,22 +24,25 @@ LAYOUTS = {
 }
 
 
-def test_memory_usage(model, seq_length=1024):
+def test_memory_usage(model, steps=20, batch_size=2, seq_length=1024):
     torch.cuda.reset_peak_memory_stats()
     model.to('cuda')
-    input_ids = torch.ones((2, seq_length), dtype=torch.long).to('cuda')
-    labels = torch.ones((2, seq_length), dtype=torch.long).to('cuda')
-    attention_mask = torch.ones((2, seq_length), dtype=torch.int).to('cuda')
+    input_ids = torch.ones((batch_size, seq_length), dtype=torch.long).to('cuda')
+    labels = torch.ones((batch_size, seq_length), dtype=torch.long).to('cuda')
+    attention_mask = torch.ones((batch_size, seq_length), dtype=torch.int).to('cuda')
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 20)
-    for _ in range(20):
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, steps)
+    start = time.time()
+    for _ in range(steps):
         outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
         loss = outputs.loss
         loss.backward(loss)
         optimizer.step()
         lr_scheduler.step()
         optimizer.zero_grad()
-    return torch.cuda.max_memory_allocated() / 1e9
+    end = time.time()
+    total_time = (end - start) / 20
+    return torch.cuda.max_memory_allocated() / 1e9, total_time
 
 
 def estimate_model_size():
@@ -79,9 +83,9 @@ def estimate_model_size():
             htf_model = AutoModelForMaskedLM.from_config(lf_config)
             model_total_params = sum(p.numel() for p in htf_model.longformer.parameters() if p.requires_grad)
             model_total_params = model_total_params / 1e6
-            memory_use = test_memory_usage(htf_model, seq_length=lf_config.max_position_embeddings)
+            memory_use, time_use = test_memory_usage(htf_model, seq_length=lf_config.max_position_embeddings)
             print(f'Longformer model has {model_total_params:.1f}M number of parameters '
-                   f'and {memory_use:.2f}GB peak memory use!')
+                   f'and {memory_use:.2f}GB peak memory use and {time_use:.3f} batch/second!')
             print('-' * 150)
 
             for layout in LAYOUTS:
@@ -112,9 +116,9 @@ def estimate_model_size():
                 htf_model = HiTransformerForMaskedLM.from_config(htf_config)
                 model_total_params = sum(p.numel() for p in htf_model.hi_transformer.parameters() if p.requires_grad)
                 model_total_params = model_total_params / 1e6
-                memory_use = test_memory_usage(htf_model, seq_length=htf_config.model_max_length)
+                memory_use, time_use = test_memory_usage(htf_model, seq_length=htf_config.model_max_length)
                 print(f'Hi-transformer model with layout {layout} has {model_total_params:.1f}M number of parameters '
-                      f'and {memory_use:.2f}GB peak memory use!')
+                      f'{memory_use:.2f}GB peak memory use and {time_use:.3f} batch/second!')
 
 
 if __name__ == '__main__':
