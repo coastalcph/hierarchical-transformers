@@ -5,7 +5,6 @@ import nltk
 import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import PCA
-from models.hi_transformer import HiTransformerTokenizer
 import warnings
 warnings.filterwarnings("ignore")
 

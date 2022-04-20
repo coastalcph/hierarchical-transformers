@@ -21,7 +21,7 @@ from packaging import version
 from dataclasses import dataclass
 from typing import Optional, Tuple
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss, CosineEmbeddingLoss
 
 from transformers.file_utils import (
     add_code_sample_docstrings,
@@ -832,8 +832,8 @@ class HiTransformerSentenceHead(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.decoder = nn.Linear(config.hidden_size, config.vocab_size)
-        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        self.decoder = nn.Linear(config.hidden_size, config.sentence_embedding_size)
+        self.bias = nn.Parameter(torch.zeros(config.sentence_embedding_size))
         self.decoder.bias = self.bias
 
     def forward(self, features):
@@ -1177,9 +1177,15 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
 
         srp_loss = None
         if sentence_labels is not None:
-            loss_fct = BCEWithLogitsLoss(reduction='none')
-            srp_losses = loss_fct(sentence_prediction_scores.view(-1, sentence_labels.shape[-1]), sentence_labels.view(-1, sentence_labels.shape[-1]))
-            srp_loss = srp_losses[sentence_masks.view(-1).bool()].mean()
+            if self.config.sentence_embedding_size != self.config.vocab_size:
+                loss_fct = CosineEmbeddingLoss()
+                srp_loss = loss_fct(sentence_prediction_scores.view(-1, sentence_labels.shape[-1])[sentence_masks.view(-1).bool()],
+                                    sentence_labels.view(-1, sentence_labels.shape[-1])[sentence_masks.view(-1).bool()],
+                                    torch.ones((sentence_masks.view(-1).sum(), ), device=sentence_masks.device))
+            else:
+                loss_fct = BCEWithLogitsLoss()
+                srp_loss = loss_fct(sentence_prediction_scores.view(-1, sentence_labels.shape[-1])[sentence_masks.view(-1).bool()],
+                                    sentence_labels.view(-1, sentence_labels.shape[-1])[sentence_masks.view(-1).bool()])
             if labels is not None or document_labels is not None:
                 total_loss += srp_loss
             else:

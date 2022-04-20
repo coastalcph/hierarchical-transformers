@@ -13,7 +13,7 @@ python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_pre
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
-    --output_dir data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY}-mlm+srp \
+    --output_dir data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY}-mlm+srp_embed \
     --overwrite_output_dir \
     --logging_steps 500 \
     --evaluation_strategy steps \
@@ -36,6 +36,7 @@ python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_pre
     --line_by_line \
     --pad_to_max_length \
     --srp 1 \
-    --mlm 1
+    --mlm 1 \
+    --sentence_bert_path all-MiniLM-L6-v2
 
 

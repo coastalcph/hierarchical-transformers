@@ -52,6 +52,9 @@ class HiTransformerTokenizer:
     def batch_decode(self, *args, **kwargs):
         return self._tokenizer.batch_decode(*args, **kwargs)
 
+    def decode(self, *args, **kwargs):
+        return self._tokenizer.decode(*args, **kwargs)
+
     def tokenize(self, text, **kwargs):
         return self._tokenizer.tokenize(text, **kwargs)
 

@@ -11,15 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import copy
 import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from transformers.tokenization_utils_base import BatchEncoding, PreTrainedTokenizerBase
 from transformers.data.data_collator import DataCollatorMixin, _torch_collate_batch, _numpy_collate_batch
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.decomposition import PCA
+
 @dataclass
 class DataCollatorForPreTraining(DataCollatorMixin):
     """
@@ -49,6 +47,8 @@ class DataCollatorForPreTraining(DataCollatorMixin):
             Whether or not to use masked sentence prediction. If set to `False`, the labels are the same as the inputs
             with the padding tokens ignored (by setting them to -100). Otherwise, the labels are -100 for non-masked
             tokens and the value to predict for the masked token.
+        sentence_embedder (`SentenceTransformer`, *optional*, defaults to `None`):
+            Sentence BERT model to encode masked sentences.
         mlm_probability (`float`, *optional*, defaults to 0.15):
             The probability with which to (randomly) mask tokens in the input, when `mlm` is set to `True`.
         pad_to_multiple_of (`int`, *optional*):
@@ -69,7 +69,8 @@ class DataCollatorForPreTraining(DataCollatorMixin):
     mslm: bool = True
     drp: bool = True
     srp: bool = True
-    sentence_embeddings: Optional[List] = None
+    sentence_embedder: Optional[bool] = None
+    sentence_embedding_size: Optional[int] = 256
     mlm_probability: float = 0.15
     ms_probability: float = 0.20
     pad_to_multiple_of: Optional[int] = None
@@ -103,7 +104,7 @@ class DataCollatorForPreTraining(DataCollatorMixin):
             batch["input_ids"], batch["labels"] = self.torch_mask_tokens(batch["input_ids"], special_tokens_mask=special_tokens_mask)
         if self.mslm:
             batch["input_ids"], batch["labels"] = self.torch_mask_sentence_tokens(batch["input_ids"], batch['sentence_masks'])
-        if self.srp and self.sentence_embeddings:
+        if self.srp and self.sentence_embedder is not None:
             batch["input_ids"], batch["labels"], batch["sentence_labels"] = self.torch_sentence_reprs(batch["input_ids"], batch["labels"], original_input_ids, batch['sentence_masks'])
         else:
             batch["input_ids"], batch["labels"], batch["sentence_labels"], batch['sentence_mask_ids'] = self.torch_bow_sentence_labels(batch["input_ids"], batch["labels"], original_input_ids, batch['sentence_masks'])
@@ -156,12 +157,12 @@ class DataCollatorForPreTraining(DataCollatorMixin):
 
     def torch_sentence_reprs(self, inputs: Any, labels: Any, original_inputs: Any, sentence_masks: Any) -> Any:
         import torch
-        sent_representations = torch.zeros((inputs.shape[0], sentence_masks.shape[1], self.sentence_embeddings), dtype=torch.float)
+        sent_representations = torch.zeros((inputs.shape[0], sentence_masks.shape[1], self.sentence_embedding_size), dtype=torch.float)
         for doc_idx, sentence_mask in enumerate(sentence_masks):
             for sent_idx, mask_id in enumerate(sentence_mask):
                 if mask_id:
-                    masked_sentence = self.tokenizer.batch_decode(original_inputs[doc_idx][(sent_idx * self.max_sentence_length): (sent_idx+1) * self.max_sentence_length])
-                    sent_representations[doc_idx][sent_idx] = torch.Tensor(features)
+                    masked_sentence = self.tokenizer.decode(original_inputs[doc_idx][(sent_idx * self.max_sentence_length): (sent_idx+1) * self.max_sentence_length], skip_special_tokens=True)
+                    sent_representations[doc_idx][sent_idx] = self.sentence_embedder.encode(masked_sentence, convert_to_tensor=True, normalize_embeddings=True)
                     if sentence_mask.sum() > 1:
                         # mask sentence tokens, except cls and pads
                         non_padded_ids = (inputs[doc_idx][(sent_idx * self.max_sentence_length) + 1:(sent_idx + 1) * self.max_sentence_length] != self.tokenizer.pad_token_id).bool()

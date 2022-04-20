@@ -396,6 +396,16 @@ def main():
     config.drp = data_args.drp
     config.srp = data_args.srp
 
+    sentence_embedder = None
+    if data_args.drp or data_args.srp and data_args.sentence_bert_path:
+        from sentence_transformers import SentenceTransformer
+        # with open('../data/wikipedia-dataset/sentence_embeddings.pkl', 'rb') as fin:
+        # sentence_embeddings = pickle.load(fin)
+        sentence_embedder = SentenceTransformer(data_args.sentence_bert_path)
+        config.sentence_embedding_size = sentence_embedder.encode('test').size
+    else:
+        config.sentence_embedding_size = config.vocab_size
+
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
         "use_fast": model_args.use_fast_tokenizer,
@@ -500,7 +510,7 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["text"] #, 'eurovoc_concepts', 'title', 'celex_id'],
+                remove_columns=["text", 'eurovoc_concepts', 'title', 'celex_id'],
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -585,10 +595,6 @@ def main():
             preds = preds[mask]
             return metric.compute(predictions=preds, references=labels)
 
-    sentence_embeddings = None
-    if data_args.drp or data_args.srp and data_args.sentence_bert_path:
-        with open('./data/wikipedia-dataset/sentence_embeddings.pkl', 'wb') as fin:
-            sentence_embeddings = pickle.load(fin)
 
     # Data collator
     # This one will take care of pre-training labels
@@ -598,11 +604,12 @@ def main():
         mslm=data_args.mslm,
         srp=data_args.srp,
         drp=data_args.drp,
+        sentence_embedder=sentence_embedder,
+        sentence_embedding_size=config.sentence_embedding_size,
         mlm_probability=data_args.mlm_probability,
         ms_probability=data_args.ms_probability,
         pad_to_multiple_of=config.max_sentence_length,
         max_sentence_length=config.max_sentence_length,
-        sentence_embeddings=sentence_embeddings,
     )
 
     # Initialize our Trainer
