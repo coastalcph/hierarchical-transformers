@@ -1,11 +1,23 @@
 import json, numpy as np, os, random
 
 
-def load_all_articles(dir):
+def load_all_wiki_articles(dir):
     all_articles = {}
     for dir, _, filenames in os.walk(dir):
         for f in filenames:
             sentences = json.load(open(os.path.join(dir, f)))
+            article_idx = len(all_articles)
+            all_articles[article_idx] = {"sentences": sentences}
+    return all_articles
+
+
+def load_all_ptb_articles(dir):
+    all_articles = {}
+    for dir, _, filenames in os.walk(dir):
+        for f in filenames:
+            sentences = [l.strip() for l in open(os.path.join(dir, f), encoding="latin-1")]
+            sentences = [l for l in sentences if len(l) > 0 and not l.startswith(".START")]
+            if len(sentences) == 0: continue
             article_idx = len(all_articles)
             all_articles[article_idx] = {"sentences": sentences}
     return all_articles
@@ -39,8 +51,14 @@ def create_examples(all_articles, max_examples_per_article=20, num_choices=5):
 
 
 if __name__ == "__main__":
-    all_articles = load_all_articles("/data/dai031/TEMP/hi-transformers/articles")
+    all_articles = load_all_wiki_articles("/data/dai031/TEMP/hi-transformers/articles")
     examples = create_examples(all_articles)
     with open("/data/dai031/TEMP/hi-transformers/wiki.examples", "w") as f:
+        for e in examples:
+            f.write(f"{json.dumps(e)}\n")
+
+    all_articles = load_all_ptb_articles("/data/dai031/Corpora/PTB/LDC99T42/treebank_3_LDC99T42/treebank_3/raw/wsj")
+    examples = create_examples(all_articles)
+    with open("/data/dai031/TEMP/hi-transformers/ptb.examples", "w") as f:
         for e in examples:
             f.write(f"{json.dumps(e)}\n")
