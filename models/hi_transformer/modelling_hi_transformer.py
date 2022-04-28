@@ -858,7 +858,7 @@ class HiTransformerForMaskedLM(HiTransformerPreTrainedModel):
         super().__init__(config)
 
         self.hi_transformer = HiTransformerModel(config)
-        self.lm_head = HiTransformerLMHead(config, sampled_decoding=False)
+        self.lm_head = HiTransformerLMHead(config)
 
         # The LM head weights require special treatment only when they are tied with the word embeddings
         self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
@@ -913,7 +913,7 @@ class HiTransformerForMaskedLM(HiTransformerPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        prediction_scores = self.lm_head(sequence_output, labels)
+        prediction_scores = self.lm_head(sequence_output)
 
         masked_lm_loss = None
         if labels is not None:
