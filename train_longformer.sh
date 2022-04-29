@@ -1,16 +1,15 @@
 export WANDB_PROJECT="hi-transformers"
-export XRT_TPU_CONFIG="localservice;0;localhost:51011"
 export PYTHONPATH=.
 
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
-python3 models/longformer/convert_bert_to_lf.py --max_sentences ${MAX_SENTENCES}
+python models/longformer/convert_bert_to_lf.py --max_sentences ${MAX_SENTENCES}
 
-python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm_stream.py \
+python language_modelling/run_mlm_stream.py \
     --model_name_or_path data/PLMs/longformer \
-    --dataset_name ./data/wikipedia-dataset \
-    --dataset_config_name 20200501.en \
+    --dataset_name lex_glue \
+    --dataset_config_name eurlex \
     --do_train \
     --do_eval \
     --output_dir data/PLMs/longformer-mlm \
@@ -23,8 +22,8 @@ python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm
     --save_total_limit 5 \
     --max_steps 50000 \
     --learning_rate 1e-4 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 32 \
     --gradient_accumulation_steps 4 \
     --eval_accumulation_steps 4 \
     --lr_scheduler_type linear \

@@ -29,7 +29,7 @@ def convert_bert_to_htf():
     bert_config = bert_model.config
     lf_config = AutoConfig.from_pretrained('allenai/longformer-base-4096')
     # Text length parameters
-    lf_config.max_position_embeddings = int(MAX_SENTENCE_LENGTH * 8) + bert_config.pad_token_id
+    lf_config.max_position_embeddings = int(MAX_SENTENCE_LENGTH * 8) + bert_config.pad_token_id + 2
     lf_config.model_max_length = int(MAX_SENTENCE_LENGTH * MAX_SENTENCES)
     lf_config.num_hidden_layers = NUM_HIDDEN_LAYERS
     # Transformer parameters
