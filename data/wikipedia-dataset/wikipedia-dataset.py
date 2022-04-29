@@ -83,6 +83,9 @@ class Wikipedia(datasets.GeneratorBasedBuilder):
     BUILDER_CONFIGS = [
         WikipediaConfig(
             dump="20200501.en",
+        ),
+        WikipediaConfig(
+            dump="eval.en",
         )  # pylint:disable=g-complex-comprehension
     ]
 

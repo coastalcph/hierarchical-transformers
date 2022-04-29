@@ -1224,6 +1224,7 @@ class HiTransformerForSequenceClassification(HiTransformerPreTrainedModel):
         self.config = config
 
         self.hi_transformer = HiTransformerModel(config)
+        self.sentencizer = HiTransformerSentencizer(config)
         self.pooler = HiTransformerPooler(config, pooling=pooling)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
@@ -1270,7 +1271,8 @@ class HiTransformerForSequenceClassification(HiTransformerPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        pooled_outputs = self.pooler(sequence_output)
+        sentence_outputs = self.sentencizer(sequence_output)
+        pooled_outputs = self.pooler(sentence_outputs)
         logits = self.classifier(pooled_outputs)
 
         loss = None
@@ -1405,6 +1407,8 @@ class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
 
         self.hi_transformer = HiTransformerModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.sentencizer = HiTransformerSentencizer(config)
+        self.pooler = HiTransformerPooler(config, pooling="attentive")
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         # Initialize weights and apply final processing
@@ -1458,10 +1462,10 @@ class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        pooled_output = outputs[1]
-
-        pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output)
+        sequence_output = outputs[0]
+        sentence_outputs = self.sentencizer(sequence_output)
+        pooled_outputs = self.pooler(sequence_output)
+        logits = self.classifier(pooled_outputs)
         reshaped_logits = logits.view(-1, num_choices)
 
         loss = None

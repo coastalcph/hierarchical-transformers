@@ -91,8 +91,6 @@ def convert_bert_to_htf():
     lf_model.lm_head.layer_norm.load_state_dict(bert_model.cls.predictions.transform.LayerNorm.state_dict())
     lf_model.lm_head.decoder.load_state_dict(bert_model.cls.predictions.decoder.state_dict())
     lf_model.lm_head.bias = copy.deepcopy(bert_model.cls.predictions.bias)
-    # htf_model.lm_head.load_state_dict(bert_model.lm_head.state_dict())
-
 
     # check position ids
     # batch = tokenizer(['this is a dog', 'this is a cat'], return_tensors='pt')

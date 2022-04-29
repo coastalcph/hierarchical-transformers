@@ -63,7 +63,7 @@ def estimate_model_size():
               F'ATTENTION HEADS: {CONFIG["num_attention_heads"]}')
         print('-' * 150)
 
-        for max_sentences in [8, 16, 32]:
+        for max_sentences in [8, 16, 32, 64]:
             print('-' * 150)
             print(F'MAX SEQ LENGTH: {int(max_sentences * MAX_SENTENCE_LENGTH)}')
             print('-' * 150)

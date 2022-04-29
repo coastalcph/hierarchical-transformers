@@ -15,16 +15,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ Finetuning sentence classification models"""
-
+import copy
 import logging
 import os
 import random
 import sys
 from dataclasses import dataclass, field
-from typing import Optional
+from itertools import chain
+from typing import Optional, Union
 
 import datasets
 import numpy as np
+import torch
 from datasets import load_dataset
 
 import transformers
@@ -36,13 +38,13 @@ from transformers import (
     TrainingArguments,
     EarlyStoppingCallback,
     default_data_collator,
-    set_seed,
+    set_seed, PreTrainedTokenizerBase,
 )
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import check_min_version
+from transformers.utils import check_min_version, PaddingStrategy
 from transformers.utils.versions import require_version
 from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
-    HiTransformerModelForSentenceClassification
+    HiTransformerForMultipleChoice
 from sklearn.metrics import accuracy_score, mean_absolute_error
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -144,6 +146,61 @@ class ModelArguments:
         },
     )
 
+@dataclass
+class DataCollatorForMultipleChoice:
+    """
+    Data collator that will dynamically pad the inputs for multiple choice received.
+
+    Args:
+        tokenizer ([`PreTrainedTokenizer`] or [`PreTrainedTokenizerFast`]):
+            The tokenizer used for encoding the data.
+        padding (`bool`, `str` or [`~utils.PaddingStrategy`], *optional*, defaults to `True`):
+            Select a strategy to pad the returned sequences (according to the model's padding side and padding index)
+            among:
+
+            - `True` or `'longest'`: Pad to the longest sequence in the batch (or no padding if only a single sequence
+              if provided).
+            - `'max_length'`: Pad to a maximum length specified with the argument `max_length` or to the maximum
+              acceptable input length for the model if that argument is not provided.
+            - `False` or `'do_not_pad'` (default): No padding (i.e., can output a batch with sequences of different
+              lengths).
+        max_length (`int`, *optional*):
+            Maximum length of the returned list and optionally padding length (see above).
+        pad_to_multiple_of (`int`, *optional*):
+            If set will pad the sequence to a multiple of the provided value.
+
+            This is especially useful to enable the use of Tensor Cores on NVIDIA hardware with compute capability >=
+            7.5 (Volta).
+    """
+
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+
+    def __call__(self, features):
+        label_name = "label" if "label" in features[0].keys() else "labels"
+        labels = [feature.pop(label_name) for feature in features]
+        batch_size = len(features)
+        num_choices = len(features[0]["input_ids"])
+        flattened_features = [
+            [{k: v[i] for k, v in feature.items()} for i in range(num_choices)] for feature in features
+        ]
+        flattened_features = list(chain(*flattened_features))
+
+        batch = self.tokenizer.pad(
+            flattened_features,
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors="pt",
+        )
+
+        # Un-flatten
+        batch = {k: v.view(batch_size, num_choices, -1) for k, v in batch.items()}
+        # Add back labels
+        batch["labels"] = torch.tensor(labels, dtype=torch.int64)
+        return batch
 
 def main():
     # See all possible arguments in src/transformers/training_args.py
@@ -232,7 +289,7 @@ def main():
         )
 
     # Labels
-    num_labels = 8
+    num_labels = 5
 
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
@@ -253,7 +310,7 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    model = HiTransformerModelForSentenceClassification.from_pretrained(
+    model = HiTransformerForMultipleChoice.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
         config=config,
@@ -279,35 +336,37 @@ def main():
             truncation=True,
         )
 
-        shuffled_input_ids = []
-        shuffled_attention_mask = []
-        shuffled_token_type_ids = []
+        mc_input_ids = []
+        mc_attention_mask = []
+        mc_token_type_ids = []
         labels = []
         for example_idx, input_ids in enumerate(batch['input_ids']):
             # count true sentences
             sentence_ids = input_ids[::config.max_sentence_size]
             n_sentences = sum(np.asarray(sentence_ids) != config.pad_token_id)
-            # shuffle sentence order
-            sentence_positions = list(range(n_sentences))
-            random.shuffle(sentence_positions)
-            # adapt sequence inputs
-            temp_input_ids = []
-            temp_attention_mask = []
-            for idx in sentence_positions:
-                temp_input_ids.extend(batch['input_ids'][example_idx][config.max_sentence_size * idx:config.max_sentence_size * (idx+1)])
-                temp_attention_mask.extend(batch['attention_mask'][example_idx][config.max_sentence_size * idx:config.max_sentence_size * (idx+1)])
+            choice_sentence_id = min(n_sentences+1, config.max_sentences) - 1
+            # pick random sentence
+            masked_sentence_id = random.choice(range(n_sentences-1))
+            # pick masked sentence input ids
+            masked_sentence_input_ids = copy.deepcopy(batch['input_ids'][example_idx][config.max_sentence_size * masked_sentence_id:config.max_sentence_size * (masked_sentence_id+1)])
+            # mask sentence input ids
+            batch['input_ids'][example_idx][(config.max_sentence_size * masked_sentence_id)+1:config.max_sentence_size * (masked_sentence_id+1)] = tokenizer.mask_token_id
+            example_input_ids = copy.deepcopy(batch['input_ids'][example_idx])
+            # choose correct choice position
+            correct_choice_id = random.choice(range(5))
+            for i in range(5):
+                if i == correct_choice_id:
+                    example_input_ids[config.max_sentence_size * choice_sentence_id:config.max_sentence_size * (choice_sentence_id+1)] = masked_sentence_input_ids
+                else:
+                    # select_negative
+                    negative_sample = masked_sentence_input_ids
+                    example_input_ids[config.max_sentence_size * choice_sentence_id:config.max_sentence_size * (choice_sentence_id+1)] = negative_sample
+                mc_input_ids.append(example_input_ids)
+                labels.append(correct_choice_id)
 
-            num_pad_sentences = config.max_sentences - n_sentences
-            shuffled_input_ids.append(temp_input_ids +
-                                      [config.pad_token_id] * (config.max_sentence_size * num_pad_sentences))
-            shuffled_attention_mask.append(temp_attention_mask +
-                                           [config.pad_token_id] * (config.max_sentence_size * num_pad_sentences))
-            shuffled_token_type_ids.append([0] * data_args.max_seq_length)
-            labels.append(sentence_positions + [-100] * num_pad_sentences)
-
-        batch['input_ids'] = shuffled_input_ids
-        batch['attention_mask'] = shuffled_attention_mask
-        batch['token_type_ids'] = shuffled_token_type_ids
+        batch['input_ids'] = mc_input_ids
+        batch['attention_mask'] = mc_attention_mask
+        batch['token_type_ids'] = mc_token_type_ids
         batch['labels'] = labels
 
         return batch
