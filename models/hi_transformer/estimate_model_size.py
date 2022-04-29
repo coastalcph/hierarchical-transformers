@@ -24,7 +24,7 @@ LAYOUTS = {
 }
 
 
-def test_memory_usage(model, steps=20, batch_size=2, seq_length=1024):
+def test_memory_usage(model, steps=100, batch_size=2, seq_length=1024):
     torch.cuda.reset_peak_memory_stats()
     model.to('cuda')
     input_ids = torch.ones((batch_size, seq_length), dtype=torch.long).to('cuda')
