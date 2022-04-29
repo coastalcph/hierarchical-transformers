@@ -41,7 +41,7 @@ def test_memory_usage(model, steps=20, batch_size=2, seq_length=1024):
         lr_scheduler.step()
         optimizer.zero_grad()
     end = time.time()
-    total_time = (end - start) / 20
+    total_time = (end - start) / steps
     return torch.cuda.max_memory_allocated() / 1e9, total_time
 
 
