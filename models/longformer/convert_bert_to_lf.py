@@ -71,14 +71,19 @@ def convert_bert_to_htf():
             bert_model.bert.encoder.layer[i].output.dense)
         lf_model.longformer.encoder.layer[i].output.LayerNorm = copy.deepcopy(
             bert_model.bert.encoder.layer[i].output.LayerNorm)
-        # local
+        # attention output
+        lf_model.longformer.encoder.layer[i].attention.output.dense = copy.deepcopy(
+            bert_model.bert.encoder.layer[i].attention.output.dense)
+        lf_model.longformer.encoder.layer[i].attention.output.LayerNorm = copy.deepcopy(
+            bert_model.bert.encoder.layer[i].attention.output.LayerNorm)
+        # local q,k,v
         lf_model.longformer.encoder.layer[i].attention.self.query = copy.deepcopy(
             bert_model.bert.encoder.layer[i].attention.self.query)
         lf_model.longformer.encoder.layer[i].attention.self.key = copy.deepcopy(
             bert_model.bert.encoder.layer[i].attention.self.key)
         lf_model.longformer.encoder.layer[i].attention.self.value = copy.deepcopy(
             bert_model.bert.encoder.layer[i].attention.self.value)
-        # global
+        # global q,k,v
         lf_model.longformer.encoder.layer[i].attention.self.query_global = copy.deepcopy(
             bert_model.bert.encoder.layer[i].attention.self.query)
         lf_model.longformer.encoder.layer[i].attention.self.key_global = copy.deepcopy(
@@ -105,6 +110,8 @@ def convert_bert_to_htf():
     # re-load model
     lf_model = AutoModelForMaskedLM.from_pretrained(f'{DATA_DIR}/PLMs/longformer')
     lf_tokenizer = AutoTokenizer.from_pretrained(f'{DATA_DIR}/PLMs/longformer')
+    # batch = tokenizer(['this is a dog', 'this is a cat'], return_tensors='pt')
+    # lf_model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'])
     print(f'Longformer model is ready to run!')
 
 
