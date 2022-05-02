@@ -29,6 +29,7 @@ from datasets import load_dataset
 
 import transformers
 from transformers import (
+    AutoConfig,
     DataCollatorWithPadding,
     EvalPrediction,
     HfArgumentParser,
@@ -43,6 +44,7 @@ from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
     HiTransformerModelForSentenceClassification
+from models.longformer import LongformerTokenizer, LongformerModelForSentenceClassification
 from sklearn.metrics import accuracy_score, mean_absolute_error
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -234,30 +236,59 @@ def main():
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    config = HiTransformerConfig.from_pretrained(
-        model_args.model_name_or_path,
-        num_labels=1,
-        finetuning_task="sentence-order",
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    tokenizer = HiTransformerTokenizer.from_pretrained(
-        model_args.model_name_or_path,
-        do_lower_case=model_args.do_lower_case,
-        cache_dir=model_args.cache_dir,
-        use_fast=model_args.use_fast_tokenizer,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    model = HiTransformerModelForSentenceClassification.from_pretrained(
-        model_args.model_name_or_path,
-        from_tf=bool(".ckpt" in model_args.model_name_or_path),
-        config=config,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
+    if 'hi-transformer' in model_args.model_name_or_path:
+        config = AutoConfig.from_pretrained(
+            model_args.model_name_or_path,
+            num_labels=1,
+            finetuning_task="sentence-order",
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        tokenizer = HiTransformerTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            do_lower_case=model_args.do_lower_case,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast_tokenizer,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        model = HiTransformerModelForSentenceClassification.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+    else:
+        config = AutoConfig.from_pretrained(
+            model_args.model_name_or_path,
+            num_labels=1,
+            finetuning_task="sentence-order",
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        config.max_sentence_size = 128
+        config.max_sentence_length = 128
+        config.max_sentences = 8
+        tokenizer = LongformerTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            do_lower_case=model_args.do_lower_case,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast_tokenizer,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        model = LongformerModelForSentenceClassification.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
 
     # Preprocessing the datasets
     # Padding strategy
