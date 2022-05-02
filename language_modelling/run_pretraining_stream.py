@@ -38,6 +38,7 @@ from transformers import (
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoConfig,
     AutoTokenizer,
+    AutoModelForMaskedLM,
     HfArgumentParser,
     TrainingArguments,
     is_torch_tpu_available,
@@ -441,8 +442,17 @@ def main():
                 revision=model_args.model_revision,
                 use_auth_token=True if model_args.use_auth_token else None,
             )
+        elif config.mslm and not config.nsp and not config.drp:
+            model = AutoModelForMaskedLM.from_pretrained(
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
+                config=config,
+                cache_dir=model_args.cache_dir,
+                revision=model_args.model_revision,
+                use_auth_token=True if model_args.use_auth_token else None,
+            )
         else:
-            raise NotImplementedError('Multi-objective pre-training is not supported for other models')
+            raise NotImplementedError('Multi-objective pre-training is not supported for other models, except for MSLM only')
     else:
         logger.info("Training new model from scratch")
         if config.model_type == 'hi-transformer':
