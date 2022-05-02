@@ -471,8 +471,6 @@ def main():
         else:
             raise NotImplementedError('Multi-objective pre-training is not supported for other models')
 
-    model.resize_token_embeddings(len(tokenizer))
-
     # Preprocessing the datasets.
     # First we tokenize all the texts.
     text_column_name = "text"

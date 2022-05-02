@@ -177,7 +177,7 @@ class LongformerModelForPreTraining(LongformerPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self.hi_transformer = LongformerModel(config)
+        self.longformer = LongformerModel(config)
         if self.config.mlm or self.config.mslm:
             self.lm_head = LongformerLMHead(config)
         if self.config.srp or self.config.srp:
@@ -209,7 +209,7 @@ class LongformerModelForPreTraining(LongformerPreTrainedModel):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hi_transformer(
+        outputs = self.longformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -301,7 +301,7 @@ class LongformerModelForSentenceClassification(LongformerPreTrainedModel):
         self.num_labels = config.num_labels
         self.config = config
 
-        self.hi_transformer = LongformerModel(config)
+        self.longformer = LongformerModel(config)
         self.sentencizer = LongformerSentencizer(config)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
@@ -332,7 +332,7 @@ class LongformerModelForSentenceClassification(LongformerPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hi_transformer(
+        outputs = self.longformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
