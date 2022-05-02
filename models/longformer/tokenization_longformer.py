@@ -12,9 +12,9 @@ class LongformerTokenizer:
         self._tokenizer = tokenizer
         self.config = LongformerConfig.from_pretrained(self._tokenizer.name_or_path)
         # hardcoded values
-        self.config.max_sentence_size = 128
-        self.config.max_sentence_length = 128
-        self.config.max_sentences = 64
+        self.max_sentence_size = 128
+        self.max_sentence_length = 128
+        self.max_sentences = 64
         self._tokenizer.model_max_length = self.model_max_length
         self.type2id = {'input_ids': (self._tokenizer.sep_token_id, self._tokenizer.pad_token_id),
                         'token_type_ids': (0, 0),
@@ -64,8 +64,8 @@ class LongformerTokenizer:
 
     def encode(self, text, **kwargs):
         input_ids = self._tokenizer.encode_plus(text, add_special_tokens=False, **kwargs)
-        input_ids = self.chunks(input_ids[: self.model_max_length - self.config.max_sentences],
-                                chunk_size=self.config.max_sentence_length, special_id=self.type2id['input_ids'])
+        input_ids = self.chunks(input_ids[: self.model_max_length - self.max_sentences],
+                                chunk_size=self.max_sentence_length, special_id=self.type2id['input_ids'])
 
         for idx, _ in enumerate(input_ids):
             input_ids[idx][0] = self._tokenizer.cls_token_id
@@ -102,8 +102,8 @@ class LongformerTokenizer:
         for input_type in original_batch:
             fixed_batch = []
             for example in original_batch[input_type]:
-                fixed_batch.append(self.chunks(example[: self.model_max_length - self.config.max_sentences],
-                                               chunk_size=self.config.max_sentence_length,
+                fixed_batch.append(self.chunks(example[: self.model_max_length - self.max_sentences],
+                                               chunk_size=self.max_sentence_length,
                                                special_id=self.type2id[input_type]))
             batch[input_type] = fixed_batch if isinstance(fixed_batch[0], list) else torch.stack(fixed_batch)
         return batch
@@ -152,18 +152,18 @@ class LongformerTokenizer:
             tmp_doc = []
             tmp_sentence = []
             for example in sentences[input_type]:
-                if len(tmp_doc) >= self.config.max_sentences:
+                if len(tmp_doc) >= self.max_sentences:
                     break
-                if len(tmp_sentence) + len(example) <= self.config.max_sentence_length - 1:
+                if len(tmp_sentence) + len(example) <= self.max_sentence_length - 1:
                     tmp_sentence.extend(example)
                 else:
                     tmp_doc.append(self.pad_sentence(tmp_sentence if len(tmp_sentence) else example,
-                                                     chunk_size=self.config.max_sentence_length,
+                                                     chunk_size=self.max_sentence_length,
                                                      special_id=self.type2id[input_type]))
-                    tmp_sentence = example if len(tmp_sentence) else example[self.config.max_sentence_length:]
-            if len(tmp_sentence) and len(tmp_doc) < self.config.max_sentences:
+                    tmp_sentence = example if len(tmp_sentence) else example[self.max_sentence_length:]
+            if len(tmp_sentence) and len(tmp_doc) < self.max_sentences:
                 tmp_doc.append(self.pad_sentence(tmp_sentence,
-                                                 chunk_size=self.config.max_sentence_length,
+                                                 chunk_size=self.max_sentence_length,
                                                  special_id=self.type2id[input_type]))
             doc_out[input_type] = [token for sentence in tmp_doc for token in sentence]
         return doc_out
