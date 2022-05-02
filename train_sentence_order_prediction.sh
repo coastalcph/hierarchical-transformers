@@ -24,10 +24,8 @@ python evaluation/run_sentence_order.py \
     --greater_is_better True \
     --save_total_limit 5 \
     --learning_rate 1e-5 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 4 \
-    --eval_accumulation_steps 4 \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 32 \
     --lr_scheduler_type linear \
     --warmup_ratio 0.05 \
     --max_seq_length ${MODEL_MAX_LENGTH} \
