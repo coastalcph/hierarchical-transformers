@@ -10,7 +10,7 @@ MAX_SENTENCES=8
 python evaluation/run_sentence_order.py \
     --model_name_or_path data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY}-${MODEL_TYPE} \
     --dataset_name ./data/wikipedia-dataset \
-    --dataset_config_name 20200501.en \
+    --dataset_config_name eval.en \
     --do_train \
     --do_eval \
     --do_predict \
