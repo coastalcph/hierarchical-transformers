@@ -1,20 +1,18 @@
 export WANDB_PROJECT="hi-transformers-eval"
 export PYTHONPATH=.
 
-LAYOUT='s1'
-MODEL_WARMUP_STRATEGY='grouped'
-MODEL_TYPE='mlm'
+MODEL_NAME='s1-grouped-mlm'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
 python evaluation/run_sentence_order.py \
-    --model_name_or_path data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY}-${MODEL_TYPE} \
+    --model_name_or_path data/PLMs/hi-transformer-${MODEL_NAME} \
     --dataset_name ./data/wikipedia-dataset \
     --dataset_config_name eval.en \
     --do_train \
     --do_eval \
     --do_predict \
-    --output_dir data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY}-${MODEL_TYPE}-sop \
+    --output_dir data/PLMs/hi-transformer-${MODEL_NAME}-sop \
     --overwrite_output_dir \
     --evaluation_strategy epoch \
     --save_strategy epoch \
