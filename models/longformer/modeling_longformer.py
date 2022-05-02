@@ -101,7 +101,6 @@ class SentenceClassifierOutput(ModelOutput):
     logits: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
-    sentence_attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
 class AttentivePooling(nn.Module):
@@ -381,5 +380,4 @@ class LongformerModelForSentenceClassification(LongformerPreTrainedModel):
             logits=logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
-            sentence_attentions=outputs.sentence_attentions
         )

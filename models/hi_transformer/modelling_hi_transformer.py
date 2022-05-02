@@ -1482,7 +1482,7 @@ class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
         )
         sequence_output = outputs[0]
         sentence_outputs = self.sentencizer(sequence_output)
-        pooled_outputs = self.pooler(sequence_output)
+        pooled_outputs = self.pooler(sentence_outputs)
         logits = self.classifier(pooled_outputs)
         reshaped_logits = logits.view(-1, num_choices)
 
