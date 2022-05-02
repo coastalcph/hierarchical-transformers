@@ -38,7 +38,6 @@ from transformers import (
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoConfig,
     AutoTokenizer,
-    AutoModelForMaskedLM,
     HfArgumentParser,
     TrainingArguments,
     is_torch_tpu_available,
@@ -49,6 +48,7 @@ from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from language_modelling.data_collator_pre_training import DataCollatorForPreTraining
 from models.hi_transformer import HiTransformerModelForPreTraining, HiTransformerTokenizer, HiTransformerConfig
+from models.longformer import LongformerModelForPreTraining, LongformerTokenizer
 from language_modelling.trainer import Trainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -380,10 +380,14 @@ def main():
         config = HiTransformerConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
     elif model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
+        config.max_sentence_size = 128
+        config.max_sentence_length = 128
+        config.max_sentences = 64
     elif model_args.model_name_or_path:
         config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
         config.max_sentence_size = 128
         config.max_sentence_length = 128
+        config.max_sentences = 64
 
     else:
         config = CONFIG_MAPPING[model_args.model_type]()
@@ -422,6 +426,13 @@ def main():
             tokenizer = HiTransformerTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
         elif model_args.config_name:
             tokenizer = HiTransformerTokenizer.from_pretrained(model_args.config_name, **tokenizer_kwargs)
+    elif config.model_type == 'longformer':
+        if model_args.tokenizer_name:
+            tokenizer = LongformerTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
+        elif model_args.model_name_or_path:
+            tokenizer = LongformerTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
+        elif model_args.config_name:
+            tokenizer = LongformerTokenizer.from_pretrained(model_args.config_name, **tokenizer_kwargs)
     elif model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
     elif model_args.model_name_or_path:
@@ -442,8 +453,8 @@ def main():
                 revision=model_args.model_revision,
                 use_auth_token=True if model_args.use_auth_token else None,
             )
-        elif config.mslm and not config.srp and not config.drp:
-            model = AutoModelForMaskedLM.from_pretrained(
+        elif config.mslm and config.model_type == 'longformer':
+            model = LongformerModelForPreTraining.from_pretrained(
                 model_args.model_name_or_path,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
@@ -452,7 +463,7 @@ def main():
                 use_auth_token=True if model_args.use_auth_token else None,
             )
         else:
-            raise NotImplementedError('Multi-objective pre-training is not supported for other models, except for MSLM only')
+            raise NotImplementedError('Multi-objective pre-training is not supported for other models')
     else:
         logger.info("Training new model from scratch")
         if config.model_type == 'hi-transformer':
@@ -486,7 +497,7 @@ def main():
         # When using line_by_line, we just tokenize each nonempty line.
         padding = "max_length" if data_args.pad_to_max_length else False
 
-        if config.model_type == 'hi-transformer':
+        if config.model_type in ['hi-transformer', 'longformer']:
             def tokenize_function(examples):
                 # Remove empty lines
                 examples[text_column_name] = [
