@@ -212,6 +212,8 @@ class LongformerModelForPreTraining(LongformerPreTrainedModel):
         outputs = self.longformer(
             input_ids,
             attention_mask=attention_mask,
+            global_attention_mask=None,
+            head_mask=None,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
             inputs_embeds=inputs_embeds,
