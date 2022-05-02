@@ -365,9 +365,9 @@ def main():
             )
 
     def compute_metrics(p: EvalPrediction):
-        preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
-        preds = (expit(preds) > 0.5).astype('int32')
-        label_ids = (p.label_ids > 0.5).astype('int32')
+        logits = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
+        preds = (expit(logits) > 0.5).astype(int)
+        label_ids = (p.label_ids > 0.5).astype(int)
         macro_f1 = f1_score(y_true=label_ids, y_pred=preds, average='macro', zero_division=0)
         micro_f1 = f1_score(y_true=label_ids, y_pred=preds, average='micro', zero_division=0)
         return {'macro_f1': macro_f1, 'micro_f1': micro_f1}
