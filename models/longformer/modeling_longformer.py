@@ -177,7 +177,7 @@ class LongformerModelForPreTraining(LongformerPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self.longformer = LongformerModel(config)
+        self.longformer = LongformerModel(config, add_pooling_layer=False)
         if self.config.mlm or self.config.mslm:
             self.lm_head = LongformerLMHead(config)
         if self.config.srp or self.config.srp:
@@ -303,7 +303,7 @@ class LongformerModelForSentenceClassification(LongformerPreTrainedModel):
         self.num_labels = config.num_labels
         self.config = config
 
-        self.longformer = LongformerModel(config)
+        self.longformer = LongformerModel(config, add_pooling_layer=False)
         self.sentencizer = LongformerSentencizer(config)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
