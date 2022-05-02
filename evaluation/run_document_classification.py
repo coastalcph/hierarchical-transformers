@@ -367,8 +367,8 @@ def main():
     def compute_metrics(p: EvalPrediction):
         preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
         preds = (expit(preds) > 0.5).astype('int32')
-        macro_f1 = f1_score(y_true=p.label_ids, y_pred=preds, average='macro', zero_division=0)
-        micro_f1 = f1_score(y_true=p.label_ids, y_pred=preds, average='micro', zero_division=0)
+        macro_f1 = f1_score(y_true=p.label_ids.astype(int), y_pred=preds, average='macro', zero_division=0)
+        micro_f1 = f1_score(y_true=p.label_ids.astype(int), y_pred=preds, average='micro', zero_division=0)
         return {'macro_f1': macro_f1, 'micro_f1': micro_f1}
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
