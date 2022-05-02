@@ -1,7 +1,7 @@
 export WANDB_PROJECT="hi-transformers-eval"
 export PYTHONPATH=.
 
-MODEL_NAME='s1-grouped-mlm'
+MODEL_NAME='hi-transformer-s1-grouped-mlm'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
