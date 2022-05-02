@@ -26,6 +26,7 @@ from typing import Optional
 import datasets
 import numpy as np
 from datasets import load_dataset
+from scipy.special import expit
 
 import transformers
 from transformers import (
@@ -43,9 +44,9 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
-    HiTransformerModelForSentenceClassification
-from models.longformer import LongformerTokenizer, LongformerModelForSentenceClassification
-from sklearn.metrics import accuracy_score, mean_absolute_error
+    HiTransformerForSequenceClassification
+from models.longformer import LongformerTokenizer, LongformerModelForSequenceClassification
+from sklearn.metrics import f1_score
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.17.0")
@@ -233,14 +234,17 @@ def main():
             cache_dir=model_args.cache_dir,
         )
 
+    num_labels = train_dataset.features['labels'].feature.num_classes
+    label_list = list(range(num_labels))
+
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
     if 'hi-transformer' in model_args.model_name_or_path:
         config = HiTransformerConfig.from_pretrained(
             model_args.model_name_or_path,
-            num_labels=1,
-            finetuning_task="sentence-order",
+            num_labels=num_labels,
+            finetuning_task="document-classification",
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
@@ -253,7 +257,7 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-        model = HiTransformerModelForSentenceClassification.from_pretrained(
+        model = HiTransformerForSequenceClassification.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
@@ -264,8 +268,8 @@ def main():
     else:
         config = AutoConfig.from_pretrained(
             model_args.model_name_or_path,
-            num_labels=1,
-            finetuning_task="sentence-order",
+            num_labels=num_labels,
+            finetuning_task="document-classification",
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
@@ -281,7 +285,7 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-        model = LongformerModelForSentenceClassification.from_pretrained(
+        model = LongformerModelForSequenceClassification.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
@@ -307,36 +311,14 @@ def main():
             truncation=True,
         )
 
-        shuffled_input_ids = []
-        shuffled_attention_mask = []
-        shuffled_token_type_ids = []
-        labels = []
-        for example_idx, input_ids in enumerate(batch['input_ids']):
-            # count true sentences
-            sentence_ids = input_ids[::config.max_sentence_size]
-            n_sentences = sum(np.asarray(sentence_ids) != config.pad_token_id)
-            # shuffle sentence order
-            sentence_positions = list(range(n_sentences))
-            random.shuffle(sentence_positions)
-            # adapt sequence inputs
-            temp_input_ids = []
-            temp_attention_mask = []
-            for idx in sentence_positions:
-                temp_input_ids.extend(batch['input_ids'][example_idx][config.max_sentence_size * idx:config.max_sentence_size * (idx+1)])
-                temp_attention_mask.extend(batch['attention_mask'][example_idx][config.max_sentence_size * idx:config.max_sentence_size * (idx+1)])
+        batch = tokenizer.pad(
+            batch,
+            padding=padding,
+            max_length=data_args.max_seq_length,
+            pad_to_multiple_of=data_args.max_seq_length,
+        )
 
-            num_pad_sentences = config.max_sentences - n_sentences
-            shuffled_input_ids.append(temp_input_ids +
-                                      [config.pad_token_id] * (config.max_sentence_size * num_pad_sentences))
-            shuffled_attention_mask.append(temp_attention_mask +
-                                           [config.pad_token_id] * (config.max_sentence_size * num_pad_sentences))
-            shuffled_token_type_ids.append([0] * data_args.max_seq_length)
-            labels.append([float(pos) for pos in sentence_positions] + [-100] * num_pad_sentences)
-
-        batch['input_ids'] = shuffled_input_ids
-        batch['attention_mask'] = shuffled_attention_mask
-        batch['token_type_ids'] = shuffled_token_type_ids
-        batch['labels'] = labels
+        batch["label_ids"] = [[1.0 if label in labels else 0.0 for label in label_list] for labels in examples["labels"]]
 
         return batch
 
@@ -350,6 +332,7 @@ def main():
                 batched=True,
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on train dataset",
+                remove_columns=['labels']
             )
         # Log a few random samples from the training set:
         for index in random.sample(range(len(train_dataset)), 3):
@@ -365,6 +348,7 @@ def main():
                 batched=True,
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on validation dataset",
+                remove_columns=['labels']
             )
 
     if training_args.do_predict:
@@ -377,27 +361,15 @@ def main():
                 batched=True,
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on prediction dataset",
+                remove_columns=['labels']
             )
 
     def compute_metrics(p: EvalPrediction):
         preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
-        preds = preds.astype(int)
-
-        # Remove ignored index (special tokens)
-        true_predictions = [
-            p for prediction, label in zip(preds, p.label_ids)
-            for (p, l) in zip(prediction, label) if l != -100
-        ]
-        true_labels = [
-            l for prediction, label in zip(preds, p.label_ids)
-            for (p, l) in zip(prediction, label) if l != -100
-
-        ]
-
-        acc = accuracy_score(y_true=true_labels, y_pred=true_predictions)
-        mae = mean_absolute_error(y_true=true_labels, y_pred=true_predictions)
-
-        return {'accuracy_score': acc, 'mae': mae}
+        preds = (expit(preds) > 0.5).astype('int32')
+        macro_f1 = f1_score(y_true=p.label_ids, y_pred=preds, average='macro', zero_division=0)
+        micro_f1 = f1_score(y_true=p.label_ids, y_pred=preds, average='micro', zero_division=0)
+        return {'macro_f1': macro_f1, 'micro_f1': micro_f1}
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
     if data_args.pad_to_max_length:

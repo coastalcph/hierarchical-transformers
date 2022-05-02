@@ -1,2 +1,2 @@
-from .modeling_longformer import LongformerModelForSentenceClassification, LongformerModelForPreTraining
+from .modeling_longformer import LongformerModelForSentenceClassification, LongformerModelForPreTraining, LongformerModelForSequenceClassification
 from .tokenization_longformer import LongformerTokenizer
