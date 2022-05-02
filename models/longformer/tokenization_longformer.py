@@ -11,6 +11,10 @@ class LongformerTokenizer:
     def __init__(self, tokenizer=None):
         self._tokenizer = tokenizer
         self.config = LongformerConfig.from_pretrained(self._tokenizer.name_or_path)
+        # hardcoded values
+        self.config.max_sentence_size = 128
+        self.config.max_sentence_length = 128
+        self.config.max_sentences = 64
         self._tokenizer.model_max_length = self.model_max_length
         self.type2id = {'input_ids': (self._tokenizer.sep_token_id, self._tokenizer.pad_token_id),
                         'token_type_ids': (0, 0),
