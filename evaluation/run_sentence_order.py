@@ -231,15 +231,12 @@ def main():
             cache_dir=model_args.cache_dir,
         )
 
-    # Labels
-    num_labels = 8
-
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
     config = HiTransformerConfig.from_pretrained(
         model_args.model_name_or_path,
-        num_labels=num_labels,
+        num_labels=1,
         finetuning_task="sentence-order",
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
@@ -303,7 +300,7 @@ def main():
             shuffled_attention_mask.append(temp_attention_mask +
                                            [config.pad_token_id] * (config.max_sentence_size * num_pad_sentences))
             shuffled_token_type_ids.append([0] * data_args.max_seq_length)
-            labels.append(sentence_positions + [-100] * num_pad_sentences)
+            labels.append([float(pos) for pos in sentence_positions] + [-100] * num_pad_sentences)
 
         batch['input_ids'] = shuffled_input_ids
         batch['attention_mask'] = shuffled_attention_mask
@@ -353,7 +350,7 @@ def main():
 
     def compute_metrics(p: EvalPrediction):
         preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
-        preds = np.argmax(preds, axis=1)
+        preds = preds.astype(int)
 
         # Remove ignored index (special tokens)
         true_predictions = [
