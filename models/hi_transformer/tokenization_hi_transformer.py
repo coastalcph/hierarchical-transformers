@@ -34,6 +34,14 @@ class HiTransformerTokenizer:
         return self._tokenizer.pad_token_id
 
     @property
+    def cls_token_id(self):
+        return self._tokenizer.cls_token_id
+
+    @property
+    def sep_token_id(self):
+        return self._tokenizer.sep_token_id
+
+    @property
     def vocab(self):
         return self._tokenizer.vocab
 
