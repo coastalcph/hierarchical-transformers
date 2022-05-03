@@ -599,8 +599,7 @@ class LongformerForMultipleChoice(LongformerPreTrainedModel):
 
         self.longformer = LongformerModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.sentencizer = LongformerSentencizer(config)
-        self.pooler = LongformerPooler(config, pooling="attentive")
+        self.pooler = LongformerPooler(config, pooling="max")
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         # Initialize weights and apply final processing

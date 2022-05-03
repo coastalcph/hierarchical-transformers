@@ -1424,8 +1424,7 @@ class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
 
         self.hi_transformer = HiTransformerModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.sentencizer = HiTransformerSentencizer(config)
-        self.pooler = HiTransformerPooler(config, pooling="attentive")
+        self.pooler = HiTransformerPooler(config, pooling="max")
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         # Initialize weights and apply final processing
