@@ -106,7 +106,7 @@ class DataCollatorForPreTraining(DataCollatorMixin):
             batch["input_ids"], batch["labels"] = self.torch_mask_sentence_tokens(batch["input_ids"], batch["attention_mask"], batch['sentence_masks'])
         if self.srp and self.sentence_embedder is not None:
             batch["input_ids"], batch["labels"], batch["sentence_labels"] = self.torch_sentence_reprs(batch["input_ids"], batch["labels"], original_input_ids, batch['sentence_masks'])
-        else:
+        elif self.srp:
             batch["input_ids"], batch["labels"], batch["sentence_labels"], batch['sentence_mask_ids'] = self.torch_bow_sentence_labels(batch["input_ids"], batch["labels"], original_input_ids, batch['sentence_masks'])
         if self.drp:
             batch["document_labels"] = self.torch_bow_document_labels(batch["sentence_labels"])
