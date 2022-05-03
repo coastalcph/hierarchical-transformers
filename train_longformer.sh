@@ -8,7 +8,7 @@ python models/longformer/convert_bert_to_lf.py --max_sentences ${MAX_SENTENCES}
 
 python language_modelling/run_mlm_stream.py \
     --model_name_or_path data/PLMs/longformer \
-    --dataset_name lex_glue \
+    --dataset_name ./data/wikipedia-dataset \
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
