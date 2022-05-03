@@ -113,7 +113,7 @@ class DataTrainingArguments:
     server_ip: Optional[str] = field(default=None, metadata={"help": "For distant debugging."})
     server_port: Optional[str] = field(default=None, metadata={"help": "For distant debugging."})
     sentence_bert_path: Optional[str] = field(
-        default='all-MiniLM-L6-v2',
+        default=None, #'all-MiniLM-L6-v2',
         metadata={
             "help": "The name of the sentence-bert to use (via the transforrmers library)"
         },
@@ -365,7 +365,7 @@ def main():
         truncation=True,
     )
     sentences = [example[idx * config.max_sentence_size + 1: (idx+1) * config.max_sentence_size] for example in batch['input_ids']
-                 for idx in range(int(len(example) / config.max_sentence_size))]
+                 for idx in range(int(len(example) / config.max_sentence_size)) if example[idx * config.max_sentence_size] != tokenizer.pad_token_id]
     sentence_embedder = None
     if data_args.sentence_bert_path:
         sentences_text = tokenizer.batch_decode(sentences)
@@ -393,10 +393,11 @@ def main():
         mc_input_ids = []
         labels = []
         for example_idx, input_ids in enumerate(batch['input_ids']):
+            # pad to full length
+            batch['input_ids'][example_idx] = batch['input_ids'][example_idx] + [tokenizer.pad_token_id] * ((config.max_sentences*config.max_sentence_size) - len(batch['input_ids'][example_idx]))
             # count true sentences
             sentence_ids = input_ids[::config.max_sentence_size]
             n_sentences = sum(np.asarray(sentence_ids) != config.pad_token_id)
-            choice_sentence_id = min(n_sentences+1, config.max_sentences) - 1
             # pick random sentence
             masked_sentence_id = random.choice(range(n_sentences-1))
             # pick masked sentence input ids
@@ -413,11 +414,11 @@ def main():
             negative_sample_id = -1
             for i in range(5):
                 if i == correct_choice_id:
-                    example_input_ids[config.max_sentence_size * choice_sentence_id:config.max_sentence_size * (choice_sentence_id+1)] = masked_sentence_input_ids
+                    example_input_ids[config.max_sentence_size * (config.max_sentences - 1):config.max_sentence_size * config.max_sentences] = masked_sentence_input_ids
                 else:
                     if sentence_embedder is None:
                         # select negative randomly out of all sentences
-                        negative_sample_id = random.choice(range(sentences))
+                        negative_sample_id = random.choice(range(len(sentences)))
                         negative_sample = copy.deepcopy(sentences[negative_sample_id])
                     else:
                         # select negative randomly out of top-20 similar sentences
@@ -426,7 +427,9 @@ def main():
                         negative_sample_id = random.choice(most_similar_ids)
                         negative_sample = copy.deepcopy(sentences[random.choice(most_similar_ids)])
 
-                    example_input_ids[(config.max_sentence_size * choice_sentence_id) + 1:config.max_sentence_size * (choice_sentence_id+1)] = negative_sample
+                    example_input_ids[(config.max_sentence_size * (config.max_sentences - 1)) + 1:config.max_sentence_size * config.max_sentences] = negative_sample
+                    example_input_ids[config.max_sentence_size * (config.max_sentences - 1)] = tokenizer.sep_token_id \
+                        if config.model_type == 'longformer' else tokenizer.cls_token_id
                 mc_input_ids.append(example_input_ids)
                 labels.append(correct_choice_id)
 

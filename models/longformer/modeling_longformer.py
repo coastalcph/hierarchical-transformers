@@ -654,8 +654,7 @@ class LongformerForMultipleChoice(LongformerPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        sentence_outputs = self.sentencizer(sequence_output)
-        pooled_outputs = self.pooler(sentence_outputs)
+        pooled_outputs = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
         logits = self.classifier(pooled_outputs)
         reshaped_logits = logits.view(-1, num_choices)
 
