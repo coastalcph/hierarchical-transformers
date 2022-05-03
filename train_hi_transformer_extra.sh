@@ -2,18 +2,17 @@ export WANDB_PROJECT="hi-transformers"
 export XRT_TPU_CONFIG="localservice;0;localhost:51011"
 export PYTHONPATH=.
 
-LAYOUT='s1'
-MODEL_WARMUP_STRATEGY='grouped'
+MODEL_NAME='hi-transformer-s1-grouped-mlm'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
 python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_pretraining_stream.py \
-    --model_name_or_path data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY}-mlm \
+    --model_name_or_path data/PLMs/${MODEL_NAME} \
     --dataset_name ./data/wikipedia-dataset \
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
-    --output_dir data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY}-mlm+srp \
+    --output_dir data/PLMs/${MODEL_NAME}+srp \
     --overwrite_output_dir \
     --logging_steps 500 \
     --evaluation_strategy steps \

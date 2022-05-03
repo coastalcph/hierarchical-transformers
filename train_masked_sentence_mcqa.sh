@@ -5,14 +5,14 @@ MODEL_NAME='hi-transformer-s1-grouped-mlm'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
-python evaluation/run_sentence_order.py \
+python evaluation/run_masked_sentence_prediction.py \
     --model_name_or_path data/PLMs/${MODEL_NAME} \
     --dataset_name ./data/wikipedia-dataset \
     --dataset_config_name eval.en \
     --do_train \
     --do_eval \
     --do_predict \
-    --output_dir data/PLMs/${MODEL_NAME}-sop \
+    --output_dir data/PLMs/${MODEL_NAME}-mcqa \
     --overwrite_output_dir \
     --evaluation_strategy epoch \
     --save_strategy epoch \

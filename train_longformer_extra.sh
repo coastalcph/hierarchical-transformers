@@ -5,7 +5,7 @@ MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
 python3 language_modelling/run_pretraining_stream.py \
-    --model_name_or_path data/PLMs/longformer-mlm \
+    --model_name_or_path data/PLMs/longformer-global-mlm \
     --dataset_name ./data/wikipedia-dataset \
     --dataset_config_name 20200501.en \
     --do_train \

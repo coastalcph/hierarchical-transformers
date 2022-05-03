@@ -31,13 +31,12 @@ from datasets import load_dataset
 
 import transformers
 from transformers import (
-    DataCollatorWithPadding,
     EvalPrediction,
     HfArgumentParser,
+    AutoConfig,
     Trainer,
     TrainingArguments,
     EarlyStoppingCallback,
-    default_data_collator,
     set_seed, PreTrainedTokenizerBase,
 )
 from transformers.trainer_utils import get_last_checkpoint
@@ -45,7 +44,9 @@ from transformers.utils import check_min_version, PaddingStrategy
 from transformers.utils.versions import require_version
 from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
     HiTransformerForMultipleChoice
-from sklearn.metrics import accuracy_score, mean_absolute_error
+from models.longformer import LongformerTokenizer, LongformerForMultipleChoice
+from sklearn.metrics import accuracy_score
+from sentence_transformers import SentenceTransformer, util
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.17.0")
@@ -111,6 +112,12 @@ class DataTrainingArguments:
     )
     server_ip: Optional[str] = field(default=None, metadata={"help": "For distant debugging."})
     server_port: Optional[str] = field(default=None, metadata={"help": "For distant debugging."})
+    sentence_bert_path: Optional[str] = field(
+        default='all-MiniLM-L6-v2',
+        metadata={
+            "help": "The name of the sentence-bert to use (via the transforrmers library)"
+        },
+    )
 
 
 @dataclass
@@ -199,8 +206,9 @@ class DataCollatorForMultipleChoice:
         # Un-flatten
         batch = {k: v.view(batch_size, num_choices, -1) for k, v in batch.items()}
         # Add back labels
-        batch["labels"] = torch.tensor(labels, dtype=torch.int64)
+        batch["labels"] = torch.tensor([label[0] for label in labels], dtype=torch.int64)
         return batch
+
 
 def main():
     # See all possible arguments in src/transformers/training_args.py
@@ -290,34 +298,80 @@ def main():
 
     # Labels
     num_labels = 5
+    random.seed(training_args.seed)
 
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    config = HiTransformerConfig.from_pretrained(
-        model_args.model_name_or_path,
-        num_labels=num_labels,
-        finetuning_task="sentence-order",
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
+    if 'hi-transformer' in model_args.model_name_or_path:
+        config = HiTransformerConfig.from_pretrained(
+            model_args.model_name_or_path,
+            num_labels=num_labels,
+            finetuning_task="sentence-mcqa",
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        tokenizer = HiTransformerTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            do_lower_case=model_args.do_lower_case,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast_tokenizer,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        model = HiTransformerForMultipleChoice.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+    else:
+        config = AutoConfig.from_pretrained(
+            model_args.model_name_or_path,
+            num_labels=num_labels,
+            finetuning_task="sentence-mcqa",
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        config.max_sentence_size = 128
+        config.max_sentence_length = 128
+        config.max_sentences = 8
+        tokenizer = LongformerTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            do_lower_case=model_args.do_lower_case,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast_tokenizer,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        model = LongformerForMultipleChoice.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+
+    # Process dataset
+    batch = tokenizer(
+        train_dataset["text"],
+        padding="max_length",
+        max_length=data_args.max_seq_length,
+        truncation=True,
     )
-    tokenizer = HiTransformerTokenizer.from_pretrained(
-        model_args.model_name_or_path,
-        do_lower_case=model_args.do_lower_case,
-        cache_dir=model_args.cache_dir,
-        use_fast=model_args.use_fast_tokenizer,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    model = HiTransformerForMultipleChoice.from_pretrained(
-        model_args.model_name_or_path,
-        from_tf=bool(".ckpt" in model_args.model_name_or_path),
-        config=config,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
+    sentences = [example[idx * config.max_sentence_size + 1: (idx+1) * config.max_sentence_size] for example in batch['input_ids']
+                 for idx in range(int(len(example) / config.max_sentence_size))]
+    sentence_embedder = None
+    if data_args.sentence_bert_path:
+        sentences_text = tokenizer.batch_decode(sentences)
+        sentence_embedder = SentenceTransformer(data_args.sentence_bert_path)
+        sentence_embeddings = sentence_embedder.encode(sentences_text)
+        logger.info(f'{len(sentence_embeddings)} sentences were embedded using {data_args.sentence_bert_path}!')
 
     # Preprocessing the datasets
     # Padding strategy
@@ -337,8 +391,6 @@ def main():
         )
 
         mc_input_ids = []
-        mc_attention_mask = []
-        mc_token_type_ids = []
         labels = []
         for example_idx, input_ids in enumerate(batch['input_ids']):
             # count true sentences
@@ -350,26 +402,40 @@ def main():
             # pick masked sentence input ids
             masked_sentence_input_ids = copy.deepcopy(batch['input_ids'][example_idx][config.max_sentence_size * masked_sentence_id:config.max_sentence_size * (masked_sentence_id+1)])
             # mask sentence input ids
-            batch['input_ids'][example_idx][(config.max_sentence_size * masked_sentence_id)+1:config.max_sentence_size * (masked_sentence_id+1)] = tokenizer.mask_token_id
+            batch['input_ids'][example_idx][(config.max_sentence_size * masked_sentence_id)+1:config.max_sentence_size * (masked_sentence_id+1)] = [tokenizer.mask_token_id] * (config.max_sentence_size - 1)
             example_input_ids = copy.deepcopy(batch['input_ids'][example_idx])
             # choose correct choice position
             correct_choice_id = random.choice(range(5))
+            if sentence_embedder is not None:
+                # select negative samples based on sentence embeddings
+                sentence_embedding = sentence_embedder.encode(tokenizer.decode(masked_sentence_input_ids[1:]))
+                most_similar_ids = list(np.argsort(util.cos_sim(sentence_embedding, sentence_embeddings).numpy()[0])[-21:-1])
+            negative_sample_id = -1
             for i in range(5):
                 if i == correct_choice_id:
                     example_input_ids[config.max_sentence_size * choice_sentence_id:config.max_sentence_size * (choice_sentence_id+1)] = masked_sentence_input_ids
                 else:
-                    # select_negative
-                    negative_sample = masked_sentence_input_ids
-                    example_input_ids[config.max_sentence_size * choice_sentence_id:config.max_sentence_size * (choice_sentence_id+1)] = negative_sample
+                    if sentence_embedder is None:
+                        # select negative randomly out of all sentences
+                        negative_sample_id = random.choice(range(sentences))
+                        negative_sample = copy.deepcopy(sentences[negative_sample_id])
+                    else:
+                        # select negative randomly out of top-20 similar sentences
+                        if negative_sample_id != -1:
+                            most_similar_ids.remove(negative_sample_id)
+                        negative_sample_id = random.choice(most_similar_ids)
+                        negative_sample = copy.deepcopy(sentences[random.choice(most_similar_ids)])
+
+                    example_input_ids[(config.max_sentence_size * choice_sentence_id) + 1:config.max_sentence_size * (choice_sentence_id+1)] = negative_sample
                 mc_input_ids.append(example_input_ids)
                 labels.append(correct_choice_id)
 
         batch['input_ids'] = mc_input_ids
-        batch['attention_mask'] = mc_attention_mask
-        batch['token_type_ids'] = mc_token_type_ids
+        batch['attention_mask'] = [[1 if idx != tokenizer.pad_token_id else 0 for idx in example] for example in batch['input_ids']]
+        batch['token_type_ids'] = [[0 for _ in example] for example in batch['input_ids']]
         batch['labels'] = labels
 
-        return batch
+        return {k: [v[i: i + 5] for i in range(0, len(v), 5)] for k, v in batch.items()}
 
     if training_args.do_train:
         if data_args.max_train_samples is not None:
@@ -414,27 +480,15 @@ def main():
         preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
         preds = np.argmax(preds, axis=1)
 
-        # Remove ignored index (special tokens)
-        true_predictions = [
-            p for prediction, label in zip(preds, p.label_ids)
-            for (p, l) in zip(prediction, label) if l != -100
-        ]
-        true_labels = [
-            l for prediction, label in zip(preds, p.label_ids)
-            for (p, l) in zip(prediction, label) if l != -100
+        acc = accuracy_score(y_true=p.label_ids, y_pred=preds)
 
-        ]
-
-        acc = accuracy_score(y_true=true_labels, y_pred=true_predictions)
-        mae = mean_absolute_error(y_true=true_labels, y_pred=true_predictions)
-
-        return {'accuracy_score': acc, 'mae': mae}
+        return {'accuracy_score': acc}
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
     if data_args.pad_to_max_length:
-        data_collator = default_data_collator
+        data_collator = DataCollatorForMultipleChoice(tokenizer)
     elif training_args.fp16:
-        data_collator = DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8)
+        data_collator = DataCollatorForMultipleChoice(tokenizer, pad_to_multiple_of=8)
     else:
         data_collator = None
 

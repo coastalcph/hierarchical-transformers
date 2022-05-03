@@ -446,23 +446,7 @@ def main():
         # When using line_by_line, we just tokenize each nonempty line.
         padding = "max_length" if data_args.pad_to_max_length else False
 
-        if config.model_type == 'hi-transformer':
-            def tokenize_function(examples):
-                # Remove empty lines
-                examples[text_column_name] = [
-                    line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
-                ]
-                return tokenizer(
-                    examples[text_column_name],
-                    padding=padding,
-                    truncation=True,
-                    max_length=max_seq_length,
-                    greedy_chunking=data_args.greedy_chunking,
-                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                    # receives the `special_tokens_mask`.
-                    return_special_tokens_mask=True,
-                )
-        elif config.model_type == 'longformer':
+        if config.model_type in ['hi-transformer', 'longformer']:
             def tokenize_function(examples):
                 # Remove empty lines
                 examples[text_column_name] = [
