@@ -50,6 +50,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerTokenizer, HiTransformerConfig
+from models.longformer import LongformerTokenizer, LongformerForMaskedLM
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.15.0")
@@ -343,8 +344,14 @@ def main():
         config = HiTransformerConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
     elif model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
+        config.max_sentence_size = 128
+        config.max_sentence_length = 128
+        config.max_sentences = 8
     elif model_args.model_name_or_path:
         config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
+        config.max_sentence_size = 128
+        config.max_sentence_length = 128
+        config.max_sentences = 8
     else:
         config = CONFIG_MAPPING[model_args.model_type]()
         logger.warning("You are instantiating a new config instance from scratch.")
@@ -366,6 +373,8 @@ def main():
             tokenizer = HiTransformerTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
         elif model_args.config_name:
             tokenizer = HiTransformerTokenizer.from_pretrained(model_args.config_name, **tokenizer_kwargs)
+    elif config.model_type == 'longformer':
+        tokenizer = LongformerTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
     elif model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
     elif model_args.model_name_or_path:
@@ -379,6 +388,15 @@ def main():
     if model_args.model_name_or_path:
         if config.model_type == 'hi-transformer':
             model = HiTransformerForMaskedLM.from_pretrained(
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
+                config=config,
+                cache_dir=model_args.cache_dir,
+                revision=model_args.model_revision,
+                use_auth_token=True if model_args.use_auth_token else None,
+            )
+        elif config.model_type == 'longformer':
+            model = LongformerForMaskedLM.from_pretrained(
                 model_args.model_name_or_path,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
@@ -429,6 +447,22 @@ def main():
         padding = "max_length" if data_args.pad_to_max_length else False
 
         if config.model_type == 'hi-transformer':
+            def tokenize_function(examples):
+                # Remove empty lines
+                examples[text_column_name] = [
+                    line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
+                ]
+                return tokenizer(
+                    examples[text_column_name],
+                    padding=padding,
+                    truncation=True,
+                    max_length=max_seq_length,
+                    greedy_chunking=data_args.greedy_chunking,
+                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
+                    # receives the `special_tokens_mask`.
+                    return_special_tokens_mask=True,
+                )
+        elif config.model_type == 'longformer':
             def tokenize_function(examples):
                 # Remove empty lines
                 examples[text_column_name] = [
@@ -555,7 +589,7 @@ def main():
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm_probability=data_args.mlm_probability,
-        pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
+        pad_to_multiple_of=pad_to_multiple_of_8,
     )
 
     # Initialize our Trainer

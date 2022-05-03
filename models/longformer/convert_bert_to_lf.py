@@ -43,6 +43,8 @@ def convert_bert_to_htf():
     lf_config.pad_token_id = bert_config.pad_token_id
     lf_config.bos_token_id = bert_config.bos_token_id
     lf_config.eos_token_id = bert_config.eos_token_id
+    lf_config.cls_token_id = tokenizer.cls_token_id
+    lf_config.sep_token_id = tokenizer.sep_token_id
     lf_config.type_vocab_size = bert_config.type_vocab_size
 
     # load dummy hi-transformer model

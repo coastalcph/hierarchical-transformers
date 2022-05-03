@@ -12,7 +12,7 @@ python language_modelling/run_mlm_stream.py \
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
-    --output_dir data/PLMs/longformer-mlm \
+    --output_dir data/PLMs/longformer-global-mlm \
     --overwrite_output_dir \
     --logging_steps 500 \
     --evaluation_strategy steps \

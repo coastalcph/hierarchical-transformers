@@ -10,7 +10,7 @@ python3 language_modelling/run_pretraining_stream.py \
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
-    --output_dir data/PLMs/longformer-mslm \
+    --output_dir data/PLMs/longformer-global-mslm \
     --overwrite_output_dir \
     --logging_steps 500 \
     --evaluation_strategy steps \

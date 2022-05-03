@@ -15,13 +15,14 @@
 """PyTorch Longformer model."""
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss, CosineEmbeddingLoss
-from transformers.models.longformer.modeling_longformer import LongformerPreTrainedModel, LongformerModel, LongformerLMHead
+from transformers.models.longformer.modeling_longformer import LongformerPreTrainedModel, LongformerModel, \
+    LongformerLMHead, LongformerMaskedLMOutput
 from transformers.activations import gelu
 
 from transformers.modeling_outputs import (
@@ -173,6 +174,106 @@ class LongformerPooler(nn.Module):
         return pooled_output
 
 
+class LongformerForMaskedLM(LongformerPreTrainedModel):
+
+    _keys_to_ignore_on_load_unexpected = [r"pooler"]
+
+    def __init__(self, config):
+        super().__init__(config)
+
+        self.longformer = LongformerModel(config, add_pooling_layer=False)
+        self.lm_head = LongformerLMHead(config)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    def get_output_embeddings(self):
+        return self.lm_head.decoder
+
+    def set_output_embeddings(self, new_embeddings):
+        self.lm_head.decoder = new_embeddings
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        token_type_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple, LongformerMaskedLMOutput]:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
+            config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked), the
+            loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
+        kwargs (`Dict[str, any]`, optional, defaults to *{}*):
+            Used to hide legacy arguments that have been deprecated.
+
+        Returns:
+
+        Examples:
+
+        ```python
+        >>> import torch
+        >>> from transformers import LongformerForMaskedLM, LongformerTokenizer
+
+        >>> model = LongformerForMaskedLM.from_pretrained("allenai/longformer-base-4096")
+        >>> tokenizer = LongformerTokenizer.from_pretrained("allenai/longformer-base-4096")
+
+        >>> SAMPLE_TEXT = " ".join(["Hello world! "] * 1000)  # long input document
+        >>> input_ids = torch.tensor(tokenizer.encode(SAMPLE_TEXT)).unsqueeze(0)  # batch of size 1
+
+        >>> attention_mask = None  # default is local attention everywhere, which is a good choice for MaskedLM
+        >>> # check `LongformerModel.forward` for more details how to set *attention_mask*
+        >>> outputs = model(input_ids, attention_mask=attention_mask, labels=input_ids)
+        >>> loss = outputs.loss
+        >>> prediction_logits = outputs.logits
+        ```"""
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        # Init global attention mask
+        global_attention_mask = torch.zeros_like(input_ids, device=input_ids.device)
+        global_attention_mask[input_ids == self.config.sep_token_id] = 1
+        global_attention_mask[input_ids == self.config.cls_token_id] = 1
+
+        outputs = self.longformer(
+            input_ids,
+            attention_mask=attention_mask,
+            global_attention_mask=global_attention_mask,
+            head_mask=head_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+        sequence_output = outputs[0]
+        prediction_scores = self.lm_head(sequence_output)
+
+        masked_lm_loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+
+        if not return_dict:
+            output = (prediction_scores,) + outputs[2:]
+            return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
+
+        return LongformerMaskedLMOutput(
+            loss=masked_lm_loss,
+            logits=prediction_scores,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+            global_attentions=outputs.global_attentions,
+        )
+
+
 class LongformerModelForPreTraining(LongformerPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
@@ -209,10 +310,15 @@ class LongformerModelForPreTraining(LongformerPreTrainedModel):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # Init global attention mask
+        global_attention_mask = torch.zeros_like(input_ids, device=input_ids.device)
+        global_attention_mask[input_ids == self.config.sep_token_id] = 1
+        global_attention_mask[input_ids == self.config.cls_token_id] = 1
+
         outputs = self.longformer(
             input_ids,
             attention_mask=attention_mask,
-            global_attention_mask=None,
+            global_attention_mask=global_attention_mask,
             head_mask=None,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
@@ -334,9 +440,15 @@ class LongformerModelForSentenceClassification(LongformerPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # Init global attention mask
+        global_attention_mask = torch.zeros_like(input_ids, device=input_ids.device)
+        global_attention_mask[input_ids == self.config.sep_token_id] = 1
+        global_attention_mask[input_ids == self.config.cls_token_id] = 1
+
         outputs = self.longformer(
             input_ids,
             attention_mask=attention_mask,
+            global_attention_mask=global_attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
             inputs_embeds=inputs_embeds,
@@ -421,9 +533,15 @@ class LongformerModelForSequenceClassification(LongformerPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        # Init global attention mask
+        global_attention_mask = torch.zeros_like(input_ids, device=input_ids.device)
+        global_attention_mask[input_ids == self.config.sep_token_id] = 1
+        global_attention_mask[input_ids == self.config.cls_token_id] = 1
+
         outputs = self.longformer(
             input_ids,
             attention_mask=attention_mask,
+            global_attention_mask=global_attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
             head_mask=head_mask,
