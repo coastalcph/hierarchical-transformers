@@ -47,7 +47,6 @@ from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
 from models.longformer import LongformerTokenizer, LongformerForMultipleChoice
 from sklearn.metrics import accuracy_score
 from sentence_transformers import SentenceTransformer, util
-from sklearn.neighbors import NearestNeighbors
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.17.0")
@@ -210,17 +209,17 @@ class DataCollatorForMultipleChoice:
         batch["labels"] = torch.tensor([label[0] for label in labels], dtype=torch.int64)
 
         # Check-up for MCQA alternatives
-        # for inputs, label in zip(batch['input_ids'], batch['labels']):
-        #     print('-' * 100)
-        #     print('-' * 100)
-        #     print(f'Example: {self.tokenizer.decode(inputs[label.numpy()][:-128])}')
-        #     print('-' * 100)
-        #     for i in range(5):
-        #         print(f'Answer [{i}]: {self.tokenizer.decode(inputs[i][-128:])}')
-        #         print('-' * 100)
-        #     print(f'Label: {label.numpy()}')
-        #     print('-'*100)
-        #     print('-' * 100)
+        for inputs, label in zip(batch['input_ids'], batch['labels']):
+            print('-' * 100)
+            print('-' * 100)
+            print(f'Example: {self.tokenizer.decode(inputs[label.numpy()][:-128])}')
+            print('-' * 100)
+            for i in range(5):
+                print(f'Answer [{i}]: {self.tokenizer.decode(inputs[i][-128:])}')
+                print('-' * 100)
+            print(f'Label: {label.numpy()}')
+            print('-'*100)
+            print('-' * 100)
 
         return batch
 
@@ -388,34 +387,8 @@ def main():
     if data_args.sentence_bert_path:
         sentences_text = tokenizer.batch_decode(sentences)
         sentence_embedder = SentenceTransformer(data_args.sentence_bert_path)
-        sentence_embeddings = sentence_embedder.encode(sentences_text, show_progress_bar=True)
+        sentence_embeddings = sentence_embedder.encode(sentences_text, show_progress_bar=True, normalize_embeddings=True)
         logger.info(f'{len(sentence_embeddings)} sentences were embedded using {data_args.sentence_bert_path}!')
-
-    def _cosine_similarity(x, y):
-        if x is y:
-            return 1.0
-        # Calculate the L2 norm of x
-        norm_x = np.sqrt(np.einsum('i, i', x, x))
-        if norm_x == 0.0:
-            norm_x = 1.0
-
-        # Calculate the L2 norm of y
-        norm_y = np.sqrt(np.einsum('i, i', y, y))
-        if norm_y == 0:
-            norm_y = 1.0
-
-        # Normalize x, y
-        x /= norm_x
-        y /= norm_y
-
-        return np.clip(a=np.einsum('i, i', x, y), a_min=-1.0, a_max=1.0)
-
-    def cosine_distance(x, y):
-        return 1.0 - _cosine_similarity(x, y)
-
-    # Build KNN
-    knn = NearestNeighbors(algorithm='brute', metric=cosine_distance, n_jobs=-1)
-    knn.fit(sentence_embeddings)
 
     # Preprocessing the datasets
     # Padding strategy
@@ -453,10 +426,8 @@ def main():
             correct_choice_id = random.choice(range(5))
             if sentence_embedder is not None:
                 # select negative samples based on sentence embeddings
-                sentence_embedding = sentence_embedder.encode(tokenizer.decode(masked_sentence_input_ids[1:]))
-                distances, most_similar_ids = knn.kneighbors(np.expand_dims(sentence_embedding, 0), n_neighbors=21)
-                # exclude the masked sentence from the list
-                most_similar_ids = list(most_similar_ids[0][1:])
+                sentence_embedding = sentence_embedder.encode(tokenizer.decode(masked_sentence_input_ids[1:]), normalize_embeddings=True)
+                most_similar_ids = list(np.argsort(util.dot_score(sentence_embedding, sentence_embeddings).numpy()[0])[-21:-1])
             negative_sample_id = -1
             for i in range(5):
                 choice_input_ids = copy.deepcopy(example_input_ids)
