@@ -1479,8 +1479,9 @@ class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        pooled_outputs = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
-        logits = self.classifier(pooled_outputs)
+        pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
         reshaped_logits = logits.view(-1, num_choices)
 
         loss = None
