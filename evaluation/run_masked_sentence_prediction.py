@@ -207,6 +207,20 @@ class DataCollatorForMultipleChoice:
         batch = {k: v.view(batch_size, num_choices, -1) for k, v in batch.items()}
         # Add back labels
         batch["labels"] = torch.tensor([label[0] for label in labels], dtype=torch.int64)
+
+        # Check-up for MCQA alternatives
+        # for inputs, label in zip(batch['input_ids'], batch['labels']):
+        #     print('-' * 100)
+        #     print('-' * 100)
+        #     print(f'Example: {self.tokenizer.decode(inputs[label.numpy()][:-128])}')
+        #     print('-' * 100)
+        #     for i in range(5):
+        #         print(f'Answer [{i}]: {self.tokenizer.decode(inputs[i][-128:])}')
+        #         print('-' * 100)
+        #     print(f'Label: {label.numpy()}')
+        #     print('-'*100)
+        #     print('-' * 100)
+
         return batch
 
 
@@ -414,8 +428,9 @@ def main():
                 most_similar_ids = list(np.argsort(util.cos_sim(sentence_embedding, sentence_embeddings).numpy()[0])[-21:-1])
             negative_sample_id = -1
             for i in range(5):
+                choice_input_ids = copy.deepcopy(example_input_ids)
                 if i == correct_choice_id:
-                    example_input_ids[config.max_sentence_size * (config.max_sentences - 1) + 1:config.max_sentence_size * config.max_sentences] = masked_sentence_input_ids[1:]
+                    choice_input_ids[config.max_sentence_size * (config.max_sentences - 1) + 1:config.max_sentence_size * config.max_sentences] = masked_sentence_input_ids[1:]
                 else:
                     if sentence_embedder is None:
                         # select negative randomly out of all sentences
@@ -428,10 +443,10 @@ def main():
                         negative_sample_id = random.choice(most_similar_ids)
                         negative_sample = copy.deepcopy(sentences[random.choice(most_similar_ids)])
 
-                    example_input_ids[(config.max_sentence_size * (config.max_sentences - 1)) + 1:config.max_sentence_size * config.max_sentences] = negative_sample
-                    example_input_ids[config.max_sentence_size * (config.max_sentences - 1)] = tokenizer.sep_token_id \
+                    choice_input_ids[(config.max_sentence_size * (config.max_sentences - 1)) + 1:config.max_sentence_size * config.max_sentences] = negative_sample
+                    choice_input_ids[config.max_sentence_size * (config.max_sentences - 1)] = tokenizer.sep_token_id \
                         if config.model_type == 'longformer' else tokenizer.cls_token_id
-                mc_input_ids.append(example_input_ids)
+                mc_input_ids.append(choice_input_ids)
                 labels.append(correct_choice_id)
 
         batch['input_ids'] = mc_input_ids
