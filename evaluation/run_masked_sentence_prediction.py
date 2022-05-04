@@ -209,17 +209,17 @@ class DataCollatorForMultipleChoice:
         batch["labels"] = torch.tensor([label[0] for label in labels], dtype=torch.int64)
 
         # Check-up for MCQA alternatives
-        for inputs, label in zip(batch['input_ids'], batch['labels']):
-            print('-' * 100)
-            print('-' * 100)
-            print(f'Example: {self.tokenizer.decode(inputs[label.numpy()][:-128])}')
-            print('-' * 100)
-            for i in range(5):
-                print(f'Answer [{i}]: {self.tokenizer.decode(inputs[i][-128:])}')
-                print('-' * 100)
-            print(f'Label: {label.numpy()}')
-            print('-'*100)
-            print('-' * 100)
+        # for inputs, label in zip(batch['input_ids'], batch['labels']):
+        #     print('-' * 100)
+        #     print('-' * 100)
+        #     print(f'Example: {self.tokenizer.decode(inputs[label.numpy()][:-128])}')
+        #     print('-' * 100)
+        #     for i in range(5):
+        #         print(f'Answer [{i}]: {self.tokenizer.decode(inputs[i][-128:])}')
+        #         print('-' * 100)
+        #     print(f'Label: {label.numpy()}')
+        #     print('-'*100)
+        #     print('-' * 100)
 
         return batch
 
@@ -386,6 +386,7 @@ def main():
     sentence_embedder = None
     if data_args.sentence_bert_path:
         sentences_text = tokenizer.batch_decode(sentences)
+        sentences_text = [sentence.replace(' [PAD]', '') for sentence in sentences_text]
         sentence_embedder = SentenceTransformer(data_args.sentence_bert_path)
         sentence_embeddings = sentence_embedder.encode(sentences_text, show_progress_bar=True, normalize_embeddings=True)
         logger.info(f'{len(sentence_embeddings)} sentences were embedded using {data_args.sentence_bert_path}!')
