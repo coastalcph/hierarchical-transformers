@@ -47,6 +47,7 @@ from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
 from models.longformer import LongformerTokenizer, LongformerForMultipleChoice
 from sklearn.metrics import accuracy_score
 from sentence_transformers import SentenceTransformer, util
+from sklearn.neighbors import NearestNeighbors
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.17.0")
@@ -371,7 +372,7 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
         )
 
-    # Process dataset
+    # Extract sentences from training dataset
     batch = tokenizer(
         train_dataset["text"],
         padding="max_length",
@@ -381,12 +382,40 @@ def main():
     sentences = [copy.deepcopy(example[idx * config.max_sentence_size + 1: (idx+1) * config.max_sentence_size]) for example in batch['input_ids']
                  for idx in range(int(len(example) / config.max_sentence_size)) if example[idx * config.max_sentence_size] != tokenizer.pad_token_id]
     del batch
+
+    # Compute sentence embeddings
     sentence_embedder = None
     if data_args.sentence_bert_path:
         sentences_text = tokenizer.batch_decode(sentences)
         sentence_embedder = SentenceTransformer(data_args.sentence_bert_path)
-        sentence_embeddings = sentence_embedder.encode(sentences_text)
+        sentence_embeddings = sentence_embedder.encode(sentences_text, show_progress_bar=True)
         logger.info(f'{len(sentence_embeddings)} sentences were embedded using {data_args.sentence_bert_path}!')
+
+    def _cosine_similarity(x, y):
+        if x is y:
+            return 1.0
+        # Calculate the L2 norm of x
+        norm_x = np.sqrt(np.einsum('i, i', x, x))
+        if norm_x == 0.0:
+            norm_x = 1.0
+
+        # Calculate the L2 norm of y
+        norm_y = np.sqrt(np.einsum('i, i', y, y))
+        if norm_y == 0:
+            norm_y = 1.0
+
+        # Normalize x, y
+        x /= norm_x
+        y /= norm_y
+
+        return np.clip(a=np.einsum('i, i', x, y), a_min=-1.0, a_max=1.0)
+
+    def cosine_distance(x, y):
+        return 1.0 - _cosine_similarity(x, y)
+
+    # Build KNN
+    knn = NearestNeighbors(algorithm='brute', metric=cosine_distance, n_jobs=-1)
+    knn.fit(sentence_embeddings)
 
     # Preprocessing the datasets
     # Padding strategy
@@ -408,14 +437,14 @@ def main():
         mc_input_ids = []
         labels = []
         for example_idx, input_ids in enumerate(batch['input_ids']):
-            # pad to full length
+            # pad example to full length
             batch['input_ids'][example_idx] = batch['input_ids'][example_idx] + [tokenizer.pad_token_id] * ((config.max_sentences*config.max_sentence_size) - len(batch['input_ids'][example_idx]))
             # count true sentences
             sentence_ids = input_ids[::config.max_sentence_size]
             n_sentences = sum(np.asarray(sentence_ids) != config.pad_token_id)
-            # pick random sentence
+            # select a random sentence to mask
             masked_sentence_id = random.choice(range(n_sentences-1))
-            # pick masked sentence input ids
+            # collect masked sentence input ids
             masked_sentence_input_ids = copy.deepcopy(batch['input_ids'][example_idx][config.max_sentence_size * masked_sentence_id:config.max_sentence_size * (masked_sentence_id+1)])
             # mask sentence input ids
             batch['input_ids'][example_idx][(config.max_sentence_size * masked_sentence_id)+1:config.max_sentence_size * (masked_sentence_id+1)] = [tokenizer.mask_token_id] * (config.max_sentence_size - 1)
@@ -425,7 +454,9 @@ def main():
             if sentence_embedder is not None:
                 # select negative samples based on sentence embeddings
                 sentence_embedding = sentence_embedder.encode(tokenizer.decode(masked_sentence_input_ids[1:]))
-                most_similar_ids = list(np.argsort(util.cos_sim(sentence_embedding, sentence_embeddings).numpy()[0])[-21:-1])
+                distances, most_similar_ids = knn.kneighbors(np.expand_dims(sentence_embedding, 0), n_neighbors=21)
+                # exclude the masked sentence from the list
+                most_similar_ids = list(most_similar_ids[0][1:])
             negative_sample_id = -1
             for i in range(5):
                 choice_input_ids = copy.deepcopy(example_input_ids)

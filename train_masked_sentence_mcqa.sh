@@ -1,7 +1,7 @@
 export WANDB_PROJECT="hi-transformers-eval"
 export PYTHONPATH=.
 
-MODEL_NAME='hi-transformer-s1-grouped-mlm'
+MODEL_NAME='hi-transformer-p1-grouped-mlm'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
@@ -12,7 +12,7 @@ python evaluation/run_masked_sentence_prediction.py \
     --do_train \
     --do_eval \
     --do_predict \
-    --output_dir data/PLMs/${MODEL_NAME}-mcqa \
+    --output_dir data/PLMs/${MODEL_NAME}-mcqa-sbert \
     --overwrite_output_dir \
     --evaluation_strategy epoch \
     --save_strategy epoch \
@@ -27,4 +27,5 @@ python evaluation/run_masked_sentence_prediction.py \
     --lr_scheduler_type linear \
     --warmup_ratio 0.05 \
     --max_seq_length ${MODEL_MAX_LENGTH} \
-    --pad_to_max_length
+    --pad_to_max_length \
+    --sentence_bert_path all-MiniLM-L6-v2
