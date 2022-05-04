@@ -553,8 +553,9 @@ class LongformerModelForSequenceClassification(LongformerPreTrainedModel):
         )
         sequence_output = outputs[0]
         sentence_outputs = self.sentencizer(sequence_output)
-        pooled_outputs = self.pooler(sentence_outputs)
-        logits = self.classifier(pooled_outputs)
+        pooled_output = self.pooler(sentence_outputs)
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
 
         loss = None
         if labels is not None:
