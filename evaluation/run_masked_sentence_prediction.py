@@ -364,8 +364,9 @@ def main():
         max_length=data_args.max_seq_length,
         truncation=True,
     )
-    sentences = [example[idx * config.max_sentence_size + 1: (idx+1) * config.max_sentence_size] for example in batch['input_ids']
+    sentences = [copy.deepcopy(example[idx * config.max_sentence_size + 1: (idx+1) * config.max_sentence_size]) for example in batch['input_ids']
                  for idx in range(int(len(example) / config.max_sentence_size)) if example[idx * config.max_sentence_size] != tokenizer.pad_token_id]
+    del batch
     sentence_embedder = None
     if data_args.sentence_bert_path:
         sentences_text = tokenizer.batch_decode(sentences)
@@ -414,7 +415,7 @@ def main():
             negative_sample_id = -1
             for i in range(5):
                 if i == correct_choice_id:
-                    example_input_ids[config.max_sentence_size * (config.max_sentences - 1):config.max_sentence_size * config.max_sentences] = masked_sentence_input_ids
+                    example_input_ids[config.max_sentence_size * (config.max_sentences - 1) + 1:config.max_sentence_size * config.max_sentences] = masked_sentence_input_ids[1:]
                 else:
                     if sentence_embedder is None:
                         # select negative randomly out of all sentences
