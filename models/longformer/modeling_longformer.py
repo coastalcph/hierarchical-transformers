@@ -188,6 +188,10 @@ class LongformerForMaskedLM(LongformerPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
+    @classmethod
+    def from_config(cls, config):
+        return cls._from_config(config)
+
     def get_output_embeddings(self):
         return self.lm_head.decoder
 
@@ -292,6 +296,10 @@ class LongformerModelForPreTraining(LongformerPreTrainedModel):
 
         # Initialize weights and apply final processing
         self.post_init()
+
+    @classmethod
+    def from_config(cls, config):
+        return cls._from_config(config)
 
     def forward(
         self,
