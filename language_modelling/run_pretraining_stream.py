@@ -444,8 +444,17 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        if config.model_type in ['hi-transformer', 'longformer']:
+        if config.model_type == 'hi-transformer':
             model = HiTransformerModelForPreTraining.from_pretrained(
+                model_args.model_name_or_path,
+                from_tf=bool(".ckpt" in model_args.model_name_or_path),
+                config=config,
+                cache_dir=model_args.cache_dir,
+                revision=model_args.model_revision,
+                use_auth_token=True if model_args.use_auth_token else None,
+            )
+        if config.model_type == 'longformer':
+            model = LongformerModelForPreTraining.from_pretrained(
                 model_args.model_name_or_path,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
