@@ -124,8 +124,8 @@ def estimate_model_size():
                 model_total_params = sum(p.numel() for p in htf_model.hi_transformer.parameters() if p.requires_grad)
                 model_total_params = model_total_params / 1e6
                 memory_use, time_use = test_memory_usage(htf_model, seq_length=int(MAX_SENTENCE_LENGTH * max_sentences))
-                mem_gains = 1 - (lf_mem_use / memory_use)
-                time_gains = 1 - (lf_time_use / time_use)
+                mem_gains = (lf_mem_use / memory_use) - 1
+                time_gains = (lf_time_use / time_use) - 1
                 print(f'Hi-transformer model with layout {layout} has {model_total_params:.1f}M number of parameters '
                       f'{memory_use:.2f}GB peak memory use (-{mem_gains*100:.2f}%) and {time_use:.3f} batch/second (-{time_gains*100:.2f}%)!')
 
