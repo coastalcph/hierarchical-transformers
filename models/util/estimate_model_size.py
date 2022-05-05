@@ -80,14 +80,15 @@ def estimate_model_size():
             # Vocabulary parameters
             lf_config.vocab_size = 32000
             lf_config.type_vocab_size = 2
-            lf_config.max_position_embeddings = int(MAX_SENTENCE_LENGTH * max_sentences)
+            lf_config.model_max_length = int(MAX_SENTENCE_LENGTH * max_sentences)
+            lf_config.max_position_embeddings = int(MAX_SENTENCE_LENGTH * max_sentences) + 2
             lf_config.attention_window = [128] * CONFIG['num_hidden_layers']
             lf_config.cls_token_id = 100
             # load dummy longformer model
             htf_model = LongformerForMaskedLM.from_config(lf_config)
             model_total_params = sum(p.numel() for p in htf_model.longformer.parameters() if p.requires_grad)
             model_total_params = model_total_params / 1e6
-            memory_use, time_use = test_memory_usage(htf_model, seq_length=lf_config.max_position_embeddings)
+            memory_use, time_use = test_memory_usage(htf_model, seq_length=lf_config.model_max_length)
             lf_mem_use = copy.deepcopy(memory_use)
             lf_time_use = copy.deepcopy(time_use)
             print(f'Longformer model has {model_total_params:.1f}M number of parameters '
@@ -122,7 +123,7 @@ def estimate_model_size():
                 htf_model = HiTransformerForMaskedLM.from_config(htf_config)
                 model_total_params = sum(p.numel() for p in htf_model.hi_transformer.parameters() if p.requires_grad)
                 model_total_params = model_total_params / 1e6
-                memory_use, time_use = test_memory_usage(htf_model, seq_length=htf_config.model_max_length)
+                memory_use, time_use = test_memory_usage(htf_model, seq_length=int(MAX_SENTENCE_LENGTH * max_sentences))
                 mem_gains = 1 - (lf_mem_use / memory_use)
                 time_gains = 1 - (lf_time_use / time_use)
                 print(f'Hi-transformer model with layout {layout} has {model_total_params:.1f}M number of parameters '
