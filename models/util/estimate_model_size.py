@@ -28,8 +28,9 @@ LAYOUTS = {
 
 def test_memory_usage(model, steps=100, batch_size=2, seq_length=1024):
     torch.cuda.reset_peak_memory_stats()
-    model.to('cuda')
+    # model.to('cuda')
     input_ids = torch.randint(1, 30000, (batch_size, seq_length), dtype=torch.long).to('cuda')
+    input_ids[:, :: 128] = 100
     labels = input_ids.clone()
     attention_mask = torch.ones((batch_size, seq_length), dtype=torch.int).to('cuda')
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
@@ -81,6 +82,7 @@ def estimate_model_size():
             lf_config.type_vocab_size = 2
             lf_config.max_position_embeddings = int(MAX_SENTENCE_LENGTH * max_sentences)
             lf_config.attention_window = [128] * CONFIG['num_hidden_layers']
+            lf_config.cls_token_id = 100
             # load dummy longformer model
             htf_model = LongformerForMaskedLM.from_config(lf_config)
             model_total_params = sum(p.numel() for p in htf_model.longformer.parameters() if p.requires_grad)
