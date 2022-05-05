@@ -7,8 +7,8 @@ MAX_SENTENCES=8
 
 python evaluation/run_document_classification.py \
     --model_name_or_path data/PLMs/${MODEL_NAME} \
-    --dataset_name lex_glue \
-    --dataset_config_name eurlex \
+    --dataset_name multi_eurlex \
+    --dataset_config_name en \
     --do_train \
     --do_eval \
     --do_predict \

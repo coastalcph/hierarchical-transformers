@@ -1,11 +1,13 @@
+import copy
 import warnings
 
 import torch
 import time
-from transformers import AutoModelForMaskedLM, AutoConfig
+from transformers import AutoConfig
 
 from data import DATA_DIR
 from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerConfig
+from models.longformer import LongformerForMaskedLM
 
 warnings.filterwarnings("ignore")
 
@@ -27,8 +29,8 @@ LAYOUTS = {
 def test_memory_usage(model, steps=100, batch_size=2, seq_length=1024):
     torch.cuda.reset_peak_memory_stats()
     model.to('cuda')
-    input_ids = torch.ones((batch_size, seq_length), dtype=torch.long).to('cuda')
-    labels = torch.ones((batch_size, seq_length), dtype=torch.long).to('cuda')
+    input_ids = torch.randint(1, 30000, (batch_size, seq_length), dtype=torch.long).to('cuda')
+    labels = input_ids.clone()
     attention_mask = torch.ones((batch_size, seq_length), dtype=torch.int).to('cuda')
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, steps)
@@ -75,15 +77,17 @@ def estimate_model_size():
             lf_config.intermediate_size = CONFIG['intermediate_size']
             lf_config.num_attention_heads = CONFIG['num_attention_heads']
             # Vocabulary parameters
-            lf_config.vocab_size = 50000
+            lf_config.vocab_size = 32000
             lf_config.type_vocab_size = 2
             lf_config.max_position_embeddings = int(MAX_SENTENCE_LENGTH * max_sentences)
             lf_config.attention_window = [128] * CONFIG['num_hidden_layers']
             # load dummy longformer model
-            htf_model = AutoModelForMaskedLM.from_config(lf_config)
+            htf_model = LongformerForMaskedLM.from_config(lf_config)
             model_total_params = sum(p.numel() for p in htf_model.longformer.parameters() if p.requires_grad)
             model_total_params = model_total_params / 1e6
             memory_use, time_use = test_memory_usage(htf_model, seq_length=lf_config.max_position_embeddings)
+            lf_mem_use = copy.deepcopy(memory_use)
+            lf_time_use = copy.deepcopy(time_use)
             print(f'Longformer model has {model_total_params:.1f}M number of parameters '
                    f'and {memory_use:.2f}GB peak memory use and {time_use:.3f} batch/second!')
             print('-' * 150)
@@ -109,7 +113,7 @@ def estimate_model_size():
                 htf_config.num_attention_heads = CONFIG['num_attention_heads']
                 htf_config.encoder_layout = ENCODER_LAYOUT
                 # Vocabulary parameters
-                htf_config.vocab_size = 50000
+                htf_config.vocab_size = 32000
                 htf_config.type_vocab_size = 2
 
                 # load dummy hi-transformer model
@@ -117,8 +121,10 @@ def estimate_model_size():
                 model_total_params = sum(p.numel() for p in htf_model.hi_transformer.parameters() if p.requires_grad)
                 model_total_params = model_total_params / 1e6
                 memory_use, time_use = test_memory_usage(htf_model, seq_length=htf_config.model_max_length)
+                mem_gains = 1 - (lf_mem_use / memory_use)
+                time_gains = 1 - (lf_time_use / time_use)
                 print(f'Hi-transformer model with layout {layout} has {model_total_params:.1f}M number of parameters '
-                      f'{memory_use:.2f}GB peak memory use and {time_use:.3f} batch/second!')
+                      f'{memory_use:.2f}GB peak memory use (-{mem_gains*100:.2f}%) and {time_use:.3f} batch/second (-{time_gains*100:.2f}%)!')
 
 
 if __name__ == '__main__':

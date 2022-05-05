@@ -10,7 +10,7 @@ python3 language_modelling/run_pretraining_stream.py \
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
-    --output_dir data/PLMs/longformer-global-mslm \
+    --output_dir data/PLMs/longformer-global-mlm+srp \
     --overwrite_output_dir \
     --logging_steps 500 \
     --evaluation_strategy steps \
@@ -27,9 +27,9 @@ python3 language_modelling/run_pretraining_stream.py \
     --lr_scheduler_type linear \
     --warmup_ratio 0.10 \
     --weight_decay 0.01 \
-    --mlm_probability 0.60 \
-    --ms_probability 0.20 \
+    --mlm_probability 0.20 \
+    --ms_probability 0.25 \
     --max_seq_length ${MODEL_MAX_LENGTH} \
     --line_by_line \
-    --pad_to_max_length \
-    --mslm 1
+    --srp 1 \
+    --mlm 1
