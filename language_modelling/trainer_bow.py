@@ -2536,7 +2536,7 @@ class Trainer:
                 srp_losses_host = srp_losses if srp_losses_host is None else torch.cat((srp_losses_host, srp_losses), dim=0)
             if drp_loss is not None:
                 drp_losses = self._nested_gather(drp_loss.repeat(batch_size))
-                drp_losses_host = srp_losses if drp_losses_host is None else torch.cat((drp_losses_host, drp_losses), dim=0)
+                drp_losses_host = drp_losses if drp_losses_host is None else torch.cat((drp_losses_host, drp_losses), dim=0)
             if labels is not None:
                 labels = self._pad_across_processes(labels)
                 labels = self._nested_gather(labels)
@@ -2581,7 +2581,7 @@ class Trainer:
             srp_losses = nested_numpify(srp_losses_host)
             srp_all_losses = srp_losses if srp_all_losses is None else np.concatenate((srp_all_losses, srp_losses), axis=0)
         if drp_losses_host is not None:
-            drp_losses = nested_numpify(srp_losses_host)
+            drp_losses = nested_numpify(drp_losses_host)
             drp_all_losses = drp_losses if drp_all_losses is None else np.concatenate((drp_all_losses, drp_losses), axis=0)
         if preds_host is not None:
             logits = nested_numpify(preds_host)

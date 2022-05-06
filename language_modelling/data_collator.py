@@ -119,16 +119,16 @@ class DataCollatorForBoWPreTraining(DataCollatorMixin):
     def torch_bow_document_labels(self, original_input_ids: Any) -> Any:
         import torch
         # sample random word indices
-        probability_matrix = torch.full((len(self.tokenizer),), 0.05)
+        probability_matrix = torch.full((len(self.tokenizer),), 0.01)
         sample_ids = torch.bernoulli(probability_matrix).bool()
         # build document labels
         document_labels = torch.zeros((original_input_ids.shape[0], len(self.tokenizer)), dtype=torch.float)
-        for doc_idx, sentence_mask in enumerate(original_input_ids):
-            unique_ids = torch.unique(original_input_ids)
+        for doc_idx, doc_original_input_ids in enumerate(original_input_ids):
+            unique_ids = torch.unique(doc_original_input_ids)
             document_labels[doc_idx][unique_ids] = 1
             sample_ids[unique_ids] = True
 
-        return document_labels[:, :, sample_ids], sample_ids
+        return document_labels[:, sample_ids], sample_ids
 
     def torch_bow_sentence_labels(self, inputs: Any, labels: Any, original_inputs: Any, sentence_masks: Any) -> Any:
         import torch
@@ -405,8 +405,8 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
                                                                                          special_tokens_mask=special_tokens_mask)
         if self.siam:
             original_input_ids = batch['input_ids'].clone()
-            batch["secondary_input_ids"], batch["primary_labels"] = self.torch_mask_tokens(original_input_ids,
-                                                                                           special_tokens_mask=special_tokens_mask)
+            batch["secondary_input_ids"], batch["secondary_labels"] = self.torch_mask_tokens(original_input_ids,
+                                                                                             special_tokens_mask=special_tokens_mask)
         batch.pop("input_ids", None)
         return batch
 

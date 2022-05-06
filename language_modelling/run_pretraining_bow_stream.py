@@ -49,7 +49,7 @@ from transformers.utils.versions import require_version
 from language_modelling.data_collator import DataCollatorForBoWPreTraining
 from models.hi_transformer import HiTransformerModelForBoWPreTraining, HiTransformerTokenizer, HiTransformerConfig
 from models.longformer import LongformerModelForPreTraining, LongformerTokenizer
-from language_modelling.trainer import Trainer
+from language_modelling.trainer_bow import Trainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.15.0")
@@ -404,7 +404,7 @@ def main():
     config.srp = data_args.srp
 
     sentence_embedder = None
-    if data_args.drp or data_args.srp and data_args.sentence_bert_path:
+    if (data_args.drp or data_args.srp) and data_args.sentence_bert_path:
         from sentence_transformers import SentenceTransformer
         # with open('../data/wikipedia-dataset/sentence_embeddings.pkl', 'rb') as fin:
         # sentence_embeddings = pickle.load(fin)

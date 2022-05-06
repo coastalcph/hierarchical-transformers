@@ -147,7 +147,7 @@ class SequenceRepresentationOutput(ModelOutput):
 
 
 @dataclass
-class HiTransformerForPreTrainingOutput(ModelOutput):
+class HiTransformerForBoWPreTrainingOutput(ModelOutput):
     """
     Output type of [`HiTransformerForPreTraining`].
 
@@ -183,6 +183,49 @@ class HiTransformerForPreTrainingOutput(ModelOutput):
     mlm_loss: Optional[torch.FloatTensor] = None
     srp_loss: Optional[torch.FloatTensor] = None
     drp_loss: Optional[torch.FloatTensor] = None
+    prediction_logits: torch.FloatTensor = None
+    document_prediction_logits: torch.FloatTensor = None
+    sentence_prediction_logits: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+@dataclass
+class HiTransformerForSimPreTrainingOutput(ModelOutput):
+    """
+    Output type of [`HiTransformerForPreTraining`].
+
+    Args:
+        loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+            Total loss as the sum of pre-training losses.
+        mlm_loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+        The masked language modeling loss.
+        sent_sim_loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+        The sentence similarity loss.
+        doc_sim_loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+        The document similarity loss.
+        prediction_logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
+            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
+        document_prediction_logits (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
+            Prediction scores of the document prediction head (scores for each vocabulary token before Sigmoid).
+        sentence_prediction_logits (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
+            Prediction scores of the sentence prediction head (scores for each vocabulary token before Sigmoid).
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer) of
+            shape `(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+    """
+
+    loss: Optional[torch.FloatTensor] = None
+    mlm_loss: Optional[torch.FloatTensor] = None
+    sent_sim_loss: Optional[torch.FloatTensor] = None
+    doc_sim_loss: Optional[torch.FloatTensor] = None
     prediction_logits: torch.FloatTensor = None
     document_prediction_logits: torch.FloatTensor = None
     sentence_prediction_logits: torch.FloatTensor = None
@@ -1160,7 +1203,7 @@ class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
             pooled_outputs = self.pooler(sentence_outputs)
             document_prediction_scores = self.document_cls(pooled_outputs)
             if document_mask_ids is not None:
-                document_prediction_scores = document_prediction_scores[:, :, document_mask_ids].clone()
+                document_prediction_scores = document_prediction_scores[:, document_mask_ids].clone()
 
         total_loss = None
         masked_lm_loss = None
@@ -1198,7 +1241,7 @@ class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
             output = (prediction_scores,) + outputs[2:]
             return ((total_loss, masked_lm_loss, srp_loss, drp_loss) + output) if total_loss is not None else output
 
-        return HiTransformerForPreTrainingOutput(
+        return HiTransformerForBoWPreTrainingOutput(
             loss=total_loss,
             mlm_loss=masked_lm_loss,
             srp_loss=srp_loss,
@@ -1278,7 +1321,7 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         # Masked Language Modeling (MLM)
         if self.config.mlm:
             primary_prediction_scores = self.lm_head(primary_sequence_output)
-            secondary_prediction_scores = self.lm_head(primary_sequence_output)
+            secondary_prediction_scores = self.lm_head(secondary_sequence_output)
 
         if self.config.srp or self.config.drp:
             primary_sentence_outputs = self.sentencizer(primary_sequence_output)
@@ -1302,43 +1345,49 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         if primary_labels is not None:
             loss_fct = CrossEntropyLoss()
             masked_lm_loss = loss_fct(primary_prediction_scores.view(-1, self.config.vocab_size), primary_labels.view(-1))
-            total_loss = masked_lm_loss.clone()
+            total_loss = masked_lm_loss.clone() / 2
             masked_lm_loss = loss_fct(secondary_prediction_scores.view(-1, self.config.vocab_size), secondary_labels.view(-1))
-            total_loss += masked_lm_loss
+            total_loss += masked_lm_loss / 2
 
-        srp_loss = None
-        if self.config.drp:
+        sent_sim_loss = None
+        if self.config.srp:
             loss_fct = CosineEmbeddingLoss()
-            srp_loss = loss_fct(primary_sentence_prediction_scores.view(-1, self.config.hidden_size),
-                                secondary_sentence_prediction_scores.view(-1, self.config.hidden_size),
+            sent_sim_loss = loss_fct(primary_sentence_prediction_scores.view(-1, self.config.hidden_size),
+                                secondary_sentence_outputs.detach().view(-1, self.config.hidden_size),
                                 torch.ones((primary_input_ids.shape[0] * self.config.max_sentences,),
-                                           device=primary_input_ids.device))
+                                           device=primary_input_ids.device)) / 2
+            sent_sim_loss += loss_fct(primary_sentence_outputs.detach().view(-1, self.config.hidden_size),
+                                     secondary_sentence_prediction_scores.view(-1, self.config.hidden_size),
+                                     torch.ones((primary_input_ids.shape[0] * self.config.max_sentences,),
+                                                device=primary_input_ids.device)) / 2
             if primary_labels is not None:
-                total_loss += srp_loss
+                total_loss += sent_sim_loss
             else:
-                total_loss = srp_loss
+                total_loss = sent_sim_loss
 
-        drp_loss = None
+        doc_sim_loss = None
         if self.config.drp:
             loss_fct = CosineEmbeddingLoss()
-            drp_loss = loss_fct(primary_document_prediction_scores,
-                                secondary_document_prediction_scores,
-                                torch.ones((primary_input_ids.shape[0],), device=primary_input_ids.device)
-                                )
+            doc_sim_loss = loss_fct(primary_document_prediction_scores, secondary_pooled_outputs.detach(),
+                                    torch.ones((primary_input_ids.shape[0],), device=primary_input_ids.device)
+                                    ) / 2
+            doc_sim_loss += loss_fct(primary_pooled_outputs.detach(), secondary_document_prediction_scores,
+                                     torch.ones((primary_input_ids.shape[0],), device=primary_input_ids.device)
+                                     ) / 2
             if primary_labels is not None:
-                total_loss += drp_loss
+                total_loss += doc_sim_loss
             else:
-                total_loss = drp_loss
+                total_loss = doc_sim_loss
 
         if not return_dict:
             output = (primary_prediction_scores,) + primary_outputs[2:]
-            return ((total_loss, masked_lm_loss, srp_loss, drp_loss) + output) if total_loss is not None else output
+            return ((total_loss, masked_lm_loss, sent_sim_loss, doc_sim_loss) + output) if total_loss is not None else output
 
-        return HiTransformerForPreTrainingOutput(
+        return HiTransformerForSimPreTrainingOutput(
             loss=total_loss,
             mlm_loss=masked_lm_loss,
-            srp_loss=srp_loss,
-            drp_loss=drp_loss,
+            sent_sim_loss=sent_sim_loss,
+            doc_sim_loss=doc_sim_loss,
             prediction_logits=primary_prediction_scores,
             hidden_states=primary_outputs.hidden_states,
             attentions=primary_outputs.attentions,

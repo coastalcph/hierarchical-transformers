@@ -10,7 +10,7 @@ python3 language_modelling/run_pretraining_stream.py \
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
-    --output_dir data/PLMs/longformer-global-mlm+srp \
+    --output_dir data/PLMs/longformer-global-mlm+srp-drp \
     --overwrite_output_dir \
     --logging_steps 500 \
     --evaluation_strategy steps \
@@ -32,4 +32,5 @@ python3 language_modelling/run_pretraining_stream.py \
     --max_seq_length ${MODEL_MAX_LENGTH} \
     --line_by_line \
     --srp 1 \
+    --drp 1 \
     --mlm 1

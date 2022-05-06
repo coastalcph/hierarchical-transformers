@@ -47,7 +47,7 @@ from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from language_modelling.data_collator import DataCollatorForSiamesePreTraining
 from models.hi_transformer import HiTransformerModelForSiamesePreTraining, HiTransformerTokenizer, HiTransformerConfig
-from language_modelling.trainer import Trainer
+from language_modelling.trainer_simsiam import Trainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.15.0")
@@ -197,12 +197,6 @@ class DataTrainingArguments:
             "help": "Whether to add masked language modelling in pre-training objectives"
         },
     )
-    mslm: Optional[int] = field(
-        default=False,
-        metadata={
-            "help": "Whether to add masked sentence language modelling in pre-training objectives"
-        },
-    )
     drp: Optional[int] = field(
         default=False,
         metadata={
@@ -213,12 +207,6 @@ class DataTrainingArguments:
         default=False,
         metadata={
             "help": "Whether to add masked sentence representation prediction in pre-training objectives"
-        },
-    )
-    sentence_bert_path: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "The name of the sentence-bert to use (via the transforrmers library)"
         },
     )
 
@@ -384,7 +372,6 @@ def main():
 
     # Add configuration pre-training flags
     config.mlm = data_args.mlm
-    config.mslm = data_args.mslm
     config.drp = data_args.drp
     config.srp = data_args.srp
 
