@@ -368,7 +368,12 @@ def main():
                 temp_input_ids.extend(batch['input_ids'][example_idx][config.max_sentence_size * idx:config.max_sentence_size * (idx+1)])
                 temp_attention_mask.extend(batch['attention_mask'][example_idx][config.max_sentence_size * idx:config.max_sentence_size * (idx+1)])
 
-            temp_input_ids[0] = tokenizer.cls_token_id
+            # Fix sentence delimiters for Longformer
+            if config.model_type == 'longformer':
+                temp_input_ids[0] = tokenizer.cls_token_id
+                for idx in range(1, n_sentences):
+                    temp_input_ids[idx*config.max_sentence_size] = tokenizer.sep_token_id
+
             num_pad_sentences = config.max_sentences - n_sentences
             shuffled_input_ids.append(temp_input_ids +
                                       [config.pad_token_id] * (config.max_sentence_size * num_pad_sentences))
