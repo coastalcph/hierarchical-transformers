@@ -1,12 +1,11 @@
 export WANDB_PROJECT="hi-transformers"
-export XRT_TPU_CONFIG="localservice;0;localhost:51011"
 export PYTHONPATH=.
 
 MODEL_NAME='hi-transformer-s1-grouped-mlm'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
-python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_pretraining_bow_stream.py \
+python language_modelling/run_pretraining_bow_stream.py \
     --model_name_or_path data/PLMs/${MODEL_NAME} \
     --dataset_name ./data/wikipedia-dataset \
     --dataset_config_name 20200501.en \
