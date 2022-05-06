@@ -1088,7 +1088,7 @@ class HiTransformerModelForMaskedSentenceRepresentation(HiTransformerPreTrainedM
     """,
     HITRANSFORMER_START_DOCSTRING,
 )
-class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
+class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
@@ -1118,6 +1118,7 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         sentence_labels=None,
         sentence_masks=None,
         sentence_mask_ids=None,
+        document_mask_ids=None,
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
@@ -1138,7 +1139,7 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         # Collect sequence output representations
         sequence_output = outputs[0]
 
-        # MLM
+        # Masked Language Modeling (MLM)
         prediction_scores = None
         if self.config.mlm or self.config.mslm:
             prediction_scores = self.lm_head(sequence_output)
@@ -1146,18 +1147,20 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
         if self.config.srp or self.config.drp:
             sentence_outputs = self.sentencizer(sequence_output)
 
-        # SRP
+        # Sentence Representation Prediction (SRP)
         sentence_prediction_scores = None
         if self.config.srp:
             sentence_prediction_scores = self.sentence_cls(sentence_outputs)
             if sentence_mask_ids is not None:
                 sentence_prediction_scores = sentence_prediction_scores[:, :, sentence_mask_ids].clone()
 
-        # DRP
+        # Document Representation Prediction (DRP)
         document_prediction_scores = None
         if self.config.drp:
             pooled_outputs = self.pooler(sentence_outputs)
             document_prediction_scores = self.document_cls(pooled_outputs)
+            if document_mask_ids is not None:
+                document_prediction_scores = document_prediction_scores[:, :, document_mask_ids].clone()
 
         total_loss = None
         masked_lm_loss = None
@@ -1205,6 +1208,140 @@ class HiTransformerModelForPreTraining(HiTransformerPreTrainedModel):
             sentence_prediction_logits=sentence_prediction_scores,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
+        )
+
+
+@add_start_docstrings(
+    """
+    Hi-Transformer Model with three heads on top as done during the pretraining: a `masked language modeling` head and a `document
+    representation prediction ` head and a `masked sentence representation prediction ` head.
+    """,
+    HITRANSFORMER_START_DOCSTRING,
+)
+class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
+    def __init__(self, config):
+        super().__init__(config)
+
+        self.hi_transformer = HiTransformerModel(config)
+        if self.config.mlm or self.config.mslm:
+            self.lm_head = HiTransformerLMHead(config)
+        if self.config.srp or self.config.srp:
+            self.sentencizer = HiTransformerSentencizer(config)
+        if self.config.drp:
+            self.pooler = HiTransformerPooler(config, pooling='max')
+            self.document_cls = nn.Linear(config.hidden_size, config.hidden_size)
+        if self.config.srp:
+            self.sentence_cls = HiTransformerSentenceHead(config)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    def forward(
+        self,
+        primary_input_ids=None,
+        secondary_input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        primary_labels=None,
+        secondary_labels=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+    ):
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        primary_outputs = self.hi_transformer(
+            primary_input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        secondary_outputs = self.hi_transformer(
+            secondary_input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        # Collect sequence output representations
+        primary_sequence_output = primary_outputs[0]
+        secondary_sequence_output = secondary_outputs[0]
+
+        # Masked Language Modeling (MLM)
+        if self.config.mlm:
+            primary_prediction_scores = self.lm_head(primary_sequence_output)
+            secondary_prediction_scores = self.lm_head(primary_sequence_output)
+
+        if self.config.srp or self.config.drp:
+            primary_sentence_outputs = self.sentencizer(primary_sequence_output)
+            secondary_sentence_outputs = self.sentencizer(secondary_sequence_output)
+
+        # Sentence Representation Prediction (SRP)
+        if self.config.srp:
+            primary_sentence_prediction_scores = self.sentence_cls(primary_sentence_outputs)
+            secondary_sentence_prediction_scores = self.sentence_cls(secondary_sentence_outputs)
+
+        # Document Representation Prediction (DRP)
+        if self.config.drp:
+            primary_pooled_outputs = self.pooler(primary_sentence_outputs)
+            primary_document_prediction_scores = self.document_cls(primary_pooled_outputs)
+            secondary_pooled_outputs = self.pooler(secondary_sentence_outputs)
+            secondary_document_prediction_scores = self.document_cls(secondary_pooled_outputs)
+
+
+        total_loss = None
+        masked_lm_loss = None
+        if primary_labels is not None:
+            loss_fct = CrossEntropyLoss()
+            masked_lm_loss = loss_fct(primary_prediction_scores.view(-1, self.config.vocab_size), primary_labels.view(-1))
+            total_loss = masked_lm_loss.clone()
+            masked_lm_loss = loss_fct(secondary_prediction_scores.view(-1, self.config.vocab_size), secondary_labels.view(-1))
+            total_loss += masked_lm_loss
+
+        srp_loss = None
+        if self.config.drp:
+            loss_fct = CosineEmbeddingLoss()
+            srp_loss = loss_fct(primary_sentence_prediction_scores.view(-1, self.config.hidden_size),
+                                secondary_sentence_prediction_scores.view(-1, self.config.hidden_size),
+                                torch.ones((primary_input_ids.shape[0] * self.config.max_sentences,),
+                                           device=primary_input_ids.device))
+            if primary_labels is not None:
+                total_loss += srp_loss
+            else:
+                total_loss = srp_loss
+
+        drp_loss = None
+        if self.config.drp:
+            loss_fct = CosineEmbeddingLoss()
+            drp_loss = loss_fct(primary_document_prediction_scores,
+                                secondary_document_prediction_scores,
+                                torch.ones((primary_input_ids.shape[0],), device=primary_input_ids.device)
+                                )
+            if primary_labels is not None:
+                total_loss += drp_loss
+            else:
+                total_loss = drp_loss
+
+        if not return_dict:
+            output = (primary_prediction_scores,) + primary_outputs[2:]
+            return ((total_loss, masked_lm_loss, srp_loss, drp_loss) + output) if total_loss is not None else output
+
+        return HiTransformerForPreTrainingOutput(
+            loss=total_loss,
+            mlm_loss=masked_lm_loss,
+            srp_loss=srp_loss,
+            drp_loss=drp_loss,
+            prediction_logits=primary_prediction_scores,
+            hidden_states=primary_outputs.hidden_states,
+            attentions=primary_outputs.attentions,
         )
 
 

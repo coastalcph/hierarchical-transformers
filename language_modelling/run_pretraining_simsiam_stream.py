@@ -36,7 +36,6 @@ import transformers
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_MASKED_LM_MAPPING,
-    AutoConfig,
     AutoTokenizer,
     HfArgumentParser,
     TrainingArguments,
@@ -46,9 +45,8 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
-from language_modelling.data_collator_pre_training import DataCollatorForPreTraining
-from models.hi_transformer import HiTransformerModelForPreTraining, HiTransformerTokenizer, HiTransformerConfig
-from models.longformer import LongformerModelForPreTraining, LongformerTokenizer
+from language_modelling.data_collator import DataCollatorForSiamesePreTraining
+from models.hi_transformer import HiTransformerModelForSiamesePreTraining, HiTransformerTokenizer, HiTransformerConfig
 from language_modelling.trainer import Trainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -358,8 +356,6 @@ def main():
             )
 
     raw_datasets = raw_datasets.with_format("torch")
-    # raw_datasets['train'] = raw_datasets['train'].remove_columns([column for column in raw_datasets.column_names['train'] if column != 'text'])
-    # raw_datasets['validation'] = raw_datasets['validation'].remove_columns([column for column in raw_datasets.column_names['validation'] if column !='text'])
 
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
@@ -378,17 +374,6 @@ def main():
         config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
     elif model_args.model_name_or_path and 'hi-transformer' in model_args.model_name_or_path:
         config = HiTransformerConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
-    elif model_args.config_name:
-        config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
-        config.max_sentence_size = 128
-        config.max_sentence_length = 128
-        config.max_sentences = 8
-    elif model_args.model_name_or_path:
-        config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
-        config.max_sentence_size = 128
-        config.max_sentence_length = 128
-        config.max_sentences = 8
-
     else:
         config = CONFIG_MAPPING[model_args.model_type]()
         logger.warning("You are instantiating a new config instance from scratch.")
@@ -403,15 +388,8 @@ def main():
     config.drp = data_args.drp
     config.srp = data_args.srp
 
-    sentence_embedder = None
-    if data_args.drp or data_args.srp and data_args.sentence_bert_path:
-        from sentence_transformers import SentenceTransformer
-        # with open('../data/wikipedia-dataset/sentence_embeddings.pkl', 'rb') as fin:
-        # sentence_embeddings = pickle.load(fin)
-        sentence_embedder = SentenceTransformer(data_args.sentence_bert_path)
-        config.sentence_embedding_size = sentence_embedder.encode('test').size
-    else:
-        config.sentence_embedding_size = config.vocab_size
+    if data_args.drp or data_args.srp:
+        config.sentence_embedding_size = config.hidden_size
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -426,13 +404,6 @@ def main():
             tokenizer = HiTransformerTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
         elif model_args.config_name:
             tokenizer = HiTransformerTokenizer.from_pretrained(model_args.config_name, **tokenizer_kwargs)
-    elif config.model_type == 'longformer':
-        if model_args.tokenizer_name:
-            tokenizer = LongformerTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
-        elif model_args.model_name_or_path:
-            tokenizer = LongformerTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
-        elif model_args.config_name:
-            tokenizer = LongformerTokenizer.from_pretrained(model_args.config_name, **tokenizer_kwargs)
     elif model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
     elif model_args.model_name_or_path:
@@ -445,16 +416,7 @@ def main():
 
     if model_args.model_name_or_path:
         if config.model_type == 'hi-transformer':
-            model = HiTransformerModelForPreTraining.from_pretrained(
-                model_args.model_name_or_path,
-                from_tf=bool(".ckpt" in model_args.model_name_or_path),
-                config=config,
-                cache_dir=model_args.cache_dir,
-                revision=model_args.model_revision,
-                use_auth_token=True if model_args.use_auth_token else None,
-            )
-        if config.model_type == 'longformer':
-            model = LongformerModelForPreTraining.from_pretrained(
+            model = HiTransformerModelForSiamesePreTraining.from_pretrained(
                 model_args.model_name_or_path,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
@@ -467,7 +429,7 @@ def main():
     else:
         logger.info("Training new model from scratch")
         if config.model_type == 'hi-transformer':
-            model = HiTransformerModelForPreTraining.from_config(config)
+            model = HiTransformerModelForSiamesePreTraining.from_config(config)
         else:
             raise NotImplementedError('Multi-objective pre-training is not supported for other models')
 
@@ -495,7 +457,7 @@ def main():
         # When using line_by_line, we just tokenize each nonempty line.
         padding = "max_length" if data_args.pad_to_max_length else False
 
-        if config.model_type in ['hi-transformer', 'longformer']:
+        if config.model_type == 'hi-transformer':
             def tokenize_function(examples):
                 # Remove empty lines
                 examples[text_column_name] = [
@@ -616,21 +578,15 @@ def main():
             preds = preds[mask]
             return metric.compute(predictions=preds, references=labels)
 
-
     # Data collator
     # This one will take care of pre-training labels
-    data_collator = DataCollatorForPreTraining(
+    data_collator = DataCollatorForSiamesePreTraining(
         tokenizer=tokenizer,
         mlm=data_args.mlm,
-        mslm=data_args.mslm,
-        srp=data_args.srp,
-        drp=data_args.drp,
-        sentence_embedder=sentence_embedder,
-        sentence_embedding_size=config.sentence_embedding_size,
+        siam=data_args.srp or data_args.drp,
         mlm_probability=data_args.mlm_probability,
         ms_probability=data_args.ms_probability,
         pad_to_multiple_of=config.max_sentence_length,
-        max_sentence_length=config.max_sentence_length,
     )
 
     # Initialize our Trainer
@@ -658,11 +614,6 @@ def main():
         trainer.save_model()  # Saves the tokenizer too for easy upload
         metrics = train_result.metrics
 
-        #max_train_samples = (
-        #    data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
-        #)
-        #metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
         trainer.save_state()
@@ -673,8 +624,6 @@ def main():
 
         metrics = trainer.evaluate()
 
-        #max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-        #metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         try:
             perplexity = math.exp(metrics["eval_loss"])
         except OverflowError:

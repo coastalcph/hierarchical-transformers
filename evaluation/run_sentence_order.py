@@ -36,7 +36,6 @@ from transformers import (
     Trainer,
     TrainingArguments,
     EarlyStoppingCallback,
-    default_data_collator,
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
@@ -46,6 +45,7 @@ from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
     HiTransformerModelForSentenceClassification
 from models.longformer import LongformerTokenizer, LongformerModelForSentenceClassification
 from sklearn.metrics import accuracy_score, mean_absolute_error
+from language_modelling.data_collator import DataCollatorForSentenceOrder
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.17.0")
@@ -53,6 +53,49 @@ check_min_version("4.17.0")
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/pytorch/text-classification/requirements.txt")
 
 logger = logging.getLogger(__name__)
+
+@dataclass
+class DataCollatorForSentenceOrder:
+    tokenizer: False
+
+    def __call__(self, features):
+        import torch
+        first = features[0]
+        batch = {}
+
+        # Special handling for labels.
+        # Ensure that tensor is created with the correct type
+        # (it should be automatically the case, but let's make sure of it.)
+        if "label" in first and first["label"] is not None:
+            label = first["label"].item() if isinstance(first["label"], torch.Tensor) else first["label"]
+            dtype = torch.long if isinstance(label, int) else torch.float
+            batch["labels"] = torch.tensor([f["label"] for f in features], dtype=dtype)
+        elif "label_ids" in first and first["label_ids"] is not None:
+            if isinstance(first["label_ids"], torch.Tensor):
+                batch["labels"] = torch.stack([f["label_ids"] for f in features])
+            else:
+                dtype = torch.long if type(first["label_ids"][0]) is int else torch.float
+                batch["labels"] = torch.tensor([f["label_ids"] for f in features], dtype=dtype)
+
+        # Handling of all other possible keys.
+        # Again, we will use the first element to figure out which key/values are not None for this model.
+        for k, v in first.items():
+            if k not in ("label", "label_ids") and v is not None and not isinstance(v, str):
+                if isinstance(v, torch.Tensor):
+                    batch[k] = torch.stack([f[k] for f in features])
+                else:
+                    batch[k] = torch.tensor([f[k] for f in features])
+
+        # Check-up examples
+        # for example_ids, labels in zip(batch['input_ids'], batch['labels']):
+        #     for idx in range(8):
+        #         print('-' * 100)
+        #         print(f'{idx+1} [Label={int(labels[idx])}]:', self.tokenizer.decode(example_ids[idx*128:(idx+1)*128]))
+        #     print('-' * 100)
+        #     print('Labels:')
+        #     print('-' * 100)
+
+        return batch
 
 
 @dataclass
@@ -325,6 +368,7 @@ def main():
                 temp_input_ids.extend(batch['input_ids'][example_idx][config.max_sentence_size * idx:config.max_sentence_size * (idx+1)])
                 temp_attention_mask.extend(batch['attention_mask'][example_idx][config.max_sentence_size * idx:config.max_sentence_size * (idx+1)])
 
+            temp_input_ids[0] = tokenizer.cls_token_id
             num_pad_sentences = config.max_sentences - n_sentences
             shuffled_input_ids.append(temp_input_ids +
                                       [config.pad_token_id] * (config.max_sentence_size * num_pad_sentences))
@@ -401,7 +445,7 @@ def main():
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
     if data_args.pad_to_max_length:
-        data_collator = default_data_collator
+        data_collator = DataCollatorForSentenceOrder(tokenizer)
     elif training_args.fp16:
         data_collator = DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8)
     else:
