@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ Finetuning sentence classification models"""
-
+import json
 import logging
 import os
 import random
@@ -37,7 +37,6 @@ from transformers import (
     Trainer,
     TrainingArguments,
     EarlyStoppingCallback,
-    default_data_collator,
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
@@ -46,6 +45,7 @@ from transformers.utils.versions import require_version
 from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
     HiTransformerForSequenceClassification
 from models.longformer import LongformerTokenizer, LongformerModelForSequenceClassification
+from language_modelling.data_collator import DataCollatorForDocumentClassification
 from sklearn.metrics import f1_score
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -122,6 +122,9 @@ class ModelArguments:
 
     model_name_or_path: str = field(
         default=None, metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
+    )
+    pooling: str = field(
+        default='max', metadata={"help": "Which pooling method to use (max, cls, attentive)."}
     )
     cache_dir: Optional[str] = field(
         default=None,
@@ -235,6 +238,13 @@ def main():
         )
 
     num_labels = train_dataset.features['labels'].feature.num_classes
+    label_ids = train_dataset.features['labels'].feature.names
+
+    # with open('eurovoc_descriptors.json') as file:
+    #     eurovoc_descs = json.load(file)
+    # label_names = {idx: eurovoc_descs[label_id]['en'] for idx, label_id in enumerate(label_ids)}
+    #
+    label_names = label_ids
     label_list = list(range(num_labels))
 
     # Load pretrained model and tokenizer
@@ -259,6 +269,7 @@ def main():
         )
         model = HiTransformerForSequenceClassification.from_pretrained(
             model_args.model_name_or_path,
+            pooling=model_args.pooling,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
             cache_dir=model_args.cache_dir,
@@ -287,6 +298,7 @@ def main():
         )
         model = LongformerModelForSequenceClassification.from_pretrained(
             model_args.model_name_or_path,
+            pooling=model_args.pooling,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
             cache_dir=model_args.cache_dir,
@@ -374,7 +386,7 @@ def main():
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
     if data_args.pad_to_max_length:
-        data_collator = default_data_collator
+        data_collator = DataCollatorForDocumentClassification(tokenizer=tokenizer, label_names=label_names)
     elif training_args.fp16:
         data_collator = DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8)
     else:

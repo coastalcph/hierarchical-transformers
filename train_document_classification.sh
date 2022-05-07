@@ -2,11 +2,13 @@ export WANDB_PROJECT="hi-transformers-eval"
 export PYTHONPATH=.
 
 MODEL_NAME='hi-transformer-s1-grouped-mlm'
+POOLING_METHOD='max'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
 python evaluation/run_document_classification.py \
     --model_name_or_path data/PLMs/${MODEL_NAME} \
+    --pooling ${POOLING_METHOD} \
     --dataset_name multi_eurlex \
     --dataset_config_name en \
     --do_train \

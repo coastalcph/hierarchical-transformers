@@ -1436,7 +1436,6 @@ class HiTransformerForSequenceClassification(HiTransformerPreTrainedModel):
         attention_mask=None,
         token_type_ids=None,
         position_ids=None,
-        head_mask=None,
         inputs_embeds=None,
         labels=None,
         output_attentions=None,
