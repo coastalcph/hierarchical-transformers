@@ -14,7 +14,7 @@ python evaluation/run_document_classification.py \
     --do_train \
     --do_eval \
     --do_predict \
-    --output_dir data/PLMs/${MODEL_NAME}-dc \
+    --output_dir data/PLMs/${MODEL_NAME}-${POOLING_METHOD}-dc \
     --overwrite_output_dir \
     --evaluation_strategy epoch \
     --save_strategy epoch \
