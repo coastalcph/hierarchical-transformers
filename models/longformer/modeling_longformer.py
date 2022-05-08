@@ -613,12 +613,18 @@ class LongformerModelForSequenceClassification(LongformerPreTrainedModel):
 class LongformerForMultipleChoice(LongformerPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
-    def __init__(self, config):
+    def __init__(self, config, pooling='max'):
         super().__init__(config)
 
+        self.pooling = pooling
         self.longformer = LongformerModel(config)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.pooler = LongformerPooler(config, pooling="max")
+        classifier_dropout = (
+            config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
+        )
+        self.dropout = nn.Dropout(classifier_dropout)
+        if self.pooling != 'cls':
+            self.sentencizer = LongformerSentencizer(config)
+        self.pooler = LongformerPooler(config, pooling=pooling)
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         # Initialize weights and apply final processing
@@ -672,7 +678,12 @@ class LongformerForMultipleChoice(LongformerPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
+        if self.pooling != 'cls':
+            sentence_outputs = self.sentencizer(sequence_output)
+            pooled_output = self.pooler(sentence_outputs)
+        else:
+            pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
+
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
         reshaped_logits = logits.view(-1, num_choices)

@@ -354,8 +354,8 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
             Whether or not to use masked language modeling. If set to `False`, the labels are the same as the inputs
             with the padding tokens ignored (by setting them to -100). Otherwise, the labels are -100 for non-masked
             tokens and the value to predict for the masked token.
-        siam (`bool`, *optional*, defaults to `True`):
-            Whether or not to use siamese pre-training objectives.
+        similarity (`bool`, *optional*, defaults to `True`):
+            Whether or not to use similarity pre-training objectives.
         mlm_probability (`float`, *optional*, defaults to 0.15):
             The probability with which to (randomly) mask tokens in the input, when `mlm` is set to `True`.
         pad_to_multiple_of (`int`, *optional*):
@@ -373,9 +373,8 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
 
     tokenizer: PreTrainedTokenizerBase
     mlm: bool = True
-    siam: bool = True
+    similarity: bool = True
     mlm_probability: float = 0.15
-    ms_probability: float = 0.20
     pad_to_multiple_of: Optional[int] = None
     return_tensors: str = "pt"
 
@@ -399,15 +398,14 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
         # If special token mask has been preprocessed, pop it from the dict.
         special_tokens_mask = batch.pop("special_tokens_mask", None)
         # Clone original input ids to consider in non-mlm tasks
-        if self.mlm or self.siam:
-            original_input_ids = batch['input_ids'].clone()
-            batch["primary_input_ids"], batch["primary_labels"] = self.torch_mask_tokens(original_input_ids,
-                                                                                         special_tokens_mask=special_tokens_mask)
-        if self.siam:
-            original_input_ids = batch['input_ids'].clone()
-            batch["secondary_input_ids"], batch["secondary_labels"] = self.torch_mask_tokens(original_input_ids,
-                                                                                             special_tokens_mask=special_tokens_mask)
-        batch.pop("input_ids", None)
+        original_input_ids = batch['input_ids'].clone()
+        secondary_original_input_ids = batch['input_ids'].clone()
+        if self.mlm or self.similarity:
+            batch["input_ids"], batch["labels"] = \
+                self.torch_mask_tokens(original_input_ids, special_tokens_mask=special_tokens_mask)
+        if self.similarity:
+            batch["secondary_input_ids"], batch["secondary_labels"] = \
+                self.torch_mask_tokens(secondary_original_input_ids, special_tokens_mask=special_tokens_mask)
         return batch
 
     def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None) -> Tuple[Any, Any]:

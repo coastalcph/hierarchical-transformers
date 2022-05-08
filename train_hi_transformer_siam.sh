@@ -1,12 +1,11 @@
 export WANDB_PROJECT="hi-transformers"
-export XRT_TPU_CONFIG="localservice;0;localhost:51011"
 export PYTHONPATH=.
 
-MODEL_NAME='hi-transformer-s1-grouped-mlm'
+MODEL_NAME='hi-transformer-p1-grouped-mlm'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
-python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_pretraining_siam_stream.py \
+python language_modelling/run_pretraining_siam_stream.py \
     --model_name_or_path data/PLMs/${MODEL_NAME} \
     --dataset_name ./data/wikipedia-dataset \
     --dataset_config_name 20200501.en \
@@ -22,20 +21,19 @@ python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_pre
     --save_total_limit 5 \
     --max_steps 10000 \
     --learning_rate 1e-5 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
+    --per_device_train_batch_size 32 \
+    --per_device_eval_batch_size 32 \
     --gradient_accumulation_steps 4 \
     --eval_accumulation_steps 4 \
     --lr_scheduler_type linear \
     --warmup_ratio 0.10 \
     --weight_decay 0.01 \
     --mlm_probability 0.20 \
-    --ms_probability 0.25 \
     --max_seq_length ${MODEL_MAX_LENGTH} \
     --line_by_line \
     --pad_to_max_length \
-    --srp 1 \
-    --drp 1 \
+    --sent_sim 1 \
+    --doc_sim 1 \
     --mlm 1
 
 

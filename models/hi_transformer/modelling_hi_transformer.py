@@ -875,8 +875,8 @@ class HiTransformerSentenceHead(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.decoder = nn.Linear(config.hidden_size, config.sentence_embedding_size)
-        self.bias = nn.Parameter(torch.zeros(config.sentence_embedding_size))
+        self.decoder = nn.Linear(config.hidden_size, config.hidden_size)
+        self.bias = nn.Parameter(torch.zeros(config.hidden_size))
         self.decoder.bias = self.bias
 
     def forward(self, features):
@@ -1262,18 +1262,19 @@ class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
     HITRANSFORMER_START_DOCSTRING,
 )
 class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config, detach_predictor=True):
         super().__init__(config)
 
+        self.detach_predictor = detach_predictor
         self.hi_transformer = HiTransformerModel(config)
-        if self.config.mlm or self.config.mslm:
+        if self.config.mlm:
             self.lm_head = HiTransformerLMHead(config)
-        if self.config.srp or self.config.srp:
+        if self.config.sent_sim or self.config.doc_sim:
             self.sentencizer = HiTransformerSentencizer(config)
-        if self.config.drp:
+        if self.config.doc_sim:
             self.pooler = HiTransformerPooler(config, pooling='max')
             self.document_cls = nn.Linear(config.hidden_size, config.hidden_size)
-        if self.config.srp:
+        if self.config.sent_sim:
             self.sentence_cls = HiTransformerSentenceHead(config)
 
         # Initialize weights and apply final processing
@@ -1281,12 +1282,12 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
 
     def forward(
         self,
-        primary_input_ids=None,
+        input_ids=None,
         secondary_input_ids=None,
         attention_mask=None,
         token_type_ids=None,
         position_ids=None,
-        primary_labels=None,
+        labels=None,
         secondary_labels=None,
         output_attentions=None,
         output_hidden_states=None,
@@ -1295,7 +1296,7 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         primary_outputs = self.hi_transformer(
-            primary_input_ids,
+            input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
@@ -1323,17 +1324,17 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             primary_prediction_scores = self.lm_head(primary_sequence_output)
             secondary_prediction_scores = self.lm_head(secondary_sequence_output)
 
-        if self.config.srp or self.config.drp:
+        if self.config.sent_sim or self.config.doc_sim:
             primary_sentence_outputs = self.sentencizer(primary_sequence_output)
             secondary_sentence_outputs = self.sentencizer(secondary_sequence_output)
 
         # Sentence Representation Prediction (SRP)
-        if self.config.srp:
+        if self.config.sent_sim:
             primary_sentence_prediction_scores = self.sentence_cls(primary_sentence_outputs)
             secondary_sentence_prediction_scores = self.sentence_cls(secondary_sentence_outputs)
 
         # Document Representation Prediction (DRP)
-        if self.config.drp:
+        if self.config.doc_sim:
             primary_pooled_outputs = self.pooler(primary_sentence_outputs)
             primary_document_prediction_scores = self.document_cls(primary_pooled_outputs)
             secondary_pooled_outputs = self.pooler(secondary_sentence_outputs)
@@ -1342,39 +1343,43 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
 
         total_loss = None
         masked_lm_loss = None
-        if primary_labels is not None:
+        if labels is not None:
             loss_fct = CrossEntropyLoss()
-            masked_lm_loss = loss_fct(primary_prediction_scores.view(-1, self.config.vocab_size), primary_labels.view(-1))
+            masked_lm_loss = loss_fct(primary_prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
             total_loss = masked_lm_loss.clone() / 2
             masked_lm_loss = loss_fct(secondary_prediction_scores.view(-1, self.config.vocab_size), secondary_labels.view(-1))
             total_loss += masked_lm_loss / 2
 
         sent_sim_loss = None
-        if self.config.srp:
+        if self.config.sent_sim:
             loss_fct = CosineEmbeddingLoss()
             sent_sim_loss = loss_fct(primary_sentence_prediction_scores.view(-1, self.config.hidden_size),
-                                secondary_sentence_outputs.detach().view(-1, self.config.hidden_size),
-                                torch.ones((primary_input_ids.shape[0] * self.config.max_sentences,),
-                                           device=primary_input_ids.device)) / 2
-            sent_sim_loss += loss_fct(primary_sentence_outputs.detach().view(-1, self.config.hidden_size),
+                                secondary_sentence_outputs.detach().view(-1, self.config.hidden_size)
+                                if self.detach_predictor else secondary_sentence_outputs.view(-1, self.config.hidden_size),
+                                torch.ones((input_ids.shape[0] * self.config.max_sentences,),
+                                           device=input_ids.device)) / 2
+            sent_sim_loss += loss_fct(primary_sentence_outputs.detach().view(-1, self.config.hidden_size)
+                                      if self.detach_predictor else primary_sentence_outputs.view(-1, self.config.hidden_size),
                                      secondary_sentence_prediction_scores.view(-1, self.config.hidden_size),
-                                     torch.ones((primary_input_ids.shape[0] * self.config.max_sentences,),
-                                                device=primary_input_ids.device)) / 2
-            if primary_labels is not None:
+                                     torch.ones((input_ids.shape[0] * self.config.max_sentences,),
+                                                device=input_ids.device)) / 2
+            if labels is not None:
                 total_loss += sent_sim_loss
             else:
                 total_loss = sent_sim_loss
 
         doc_sim_loss = None
-        if self.config.drp:
+        if self.config.doc_sim:
             loss_fct = CosineEmbeddingLoss()
-            doc_sim_loss = loss_fct(primary_document_prediction_scores, secondary_pooled_outputs.detach(),
-                                    torch.ones((primary_input_ids.shape[0],), device=primary_input_ids.device)
+            doc_sim_loss = loss_fct(primary_document_prediction_scores,
+                                    secondary_pooled_outputs.detach() if self.detach_predictor else secondary_pooled_outputs,
+                                    torch.ones((input_ids.shape[0],), device=input_ids.device)
                                     ) / 2
-            doc_sim_loss += loss_fct(primary_pooled_outputs.detach(), secondary_document_prediction_scores,
-                                     torch.ones((primary_input_ids.shape[0],), device=primary_input_ids.device)
+            doc_sim_loss += loss_fct(primary_pooled_outputs.detach() if self.detach_predictor else primary_pooled_outputs,
+                                     secondary_document_prediction_scores,
+                                     torch.ones((input_ids.shape[0],), device=input_ids.device)
                                      ) / 2
-            if primary_labels is not None:
+            if labels is not None:
                 total_loss += doc_sim_loss
             else:
                 total_loss = doc_sim_loss
@@ -1615,12 +1620,18 @@ class HiTransformerModelForSentenceClassification(HiTransformerPreTrainedModel):
 class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
-    def __init__(self, config):
+    def __init__(self, config, pooling='max'):
         super().__init__(config)
 
+        self.pooling = pooling
         self.hi_transformer = HiTransformerModel(config)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.pooler = HiTransformerPooler(config, pooling="max")
+        classifier_dropout = (
+            config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
+        )
+        self.dropout = nn.Dropout(classifier_dropout)
+        if self.pooling != 'cls':
+            self.sentencizer = HiTransformerSentencizer(config)
+        self.pooler = HiTransformerPooler(config, pooling=pooling)
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         # Initialize weights and apply final processing
@@ -1675,7 +1686,12 @@ class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
+        if self.pooling != 'cls':
+            sentence_outputs = self.sentencizer(sequence_output)
+            pooled_output = self.pooler(sentence_outputs)
+        else:
+            pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
+
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
         reshaped_logits = logits.view(-1, num_choices)

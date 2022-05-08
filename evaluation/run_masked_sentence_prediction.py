@@ -128,6 +128,9 @@ class ModelArguments:
     model_name_or_path: str = field(
         default=None, metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
+    pooling: str = field(
+        default='cls', metadata={"help": "Which pooling method to use (max, cls, attentive)."}
+    )
     cache_dir: Optional[str] = field(
         default=None,
         metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
@@ -264,6 +267,7 @@ def main():
         )
         model = HiTransformerForMultipleChoice.from_pretrained(
             model_args.model_name_or_path,
+            pooling=model_args.pooling,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
             cache_dir=model_args.cache_dir,
@@ -292,6 +296,7 @@ def main():
         )
         model = LongformerForMultipleChoice.from_pretrained(
             model_args.model_name_or_path,
+            pooling=model_args.pooling,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
             cache_dir=model_args.cache_dir,

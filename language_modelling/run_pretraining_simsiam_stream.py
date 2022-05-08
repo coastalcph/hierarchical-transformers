@@ -156,9 +156,6 @@ class DataTrainingArguments:
     mlm_probability: float = field(
         default=0.20, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
     )
-    ms_probability: float = field(
-        default=0.20, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
-    )
     line_by_line: bool = field(
         default=False,
         metadata={"help": "Whether distinct lines of text in the dataset are to be handled as distinct sequences."},
@@ -175,6 +172,12 @@ class DataTrainingArguments:
         metadata={
             "help": "Whether to chunk input sequences greedily. "
             "If False, tokenizer will use sentence splitting, otherwise fixed chunking."
+        },
+    )
+    detach_predictor: int = field(
+        default=1,
+        metadata={
+            "help": "Whether to detach predictor from the siamese network."
         },
     )
     max_train_samples: Optional[int] = field(
@@ -197,16 +200,16 @@ class DataTrainingArguments:
             "help": "Whether to add masked language modelling in pre-training objectives"
         },
     )
-    drp: Optional[int] = field(
+    sent_sim: Optional[int] = field(
         default=False,
         metadata={
-            "help": "Whether to add document representation prediction in pre-training objectives"
+            "help": "Whether to add document representation similarity in pre-training objectives"
         },
     )
-    srp: Optional[int] = field(
+    doc_sim: Optional[int] = field(
         default=False,
         metadata={
-            "help": "Whether to add masked sentence representation prediction in pre-training objectives"
+            "help": "Whether to add masked sentence representation similarity in pre-training objectives"
         },
     )
 
@@ -372,11 +375,8 @@ def main():
 
     # Add configuration pre-training flags
     config.mlm = data_args.mlm
-    config.drp = data_args.drp
-    config.srp = data_args.srp
-
-    if data_args.drp or data_args.srp:
-        config.sentence_embedding_size = config.hidden_size
+    config.sent_sim = data_args.sent_sim
+    config.doc_sim = data_args.doc_sim
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -405,6 +405,7 @@ def main():
         if config.model_type == 'hi-transformer':
             model = HiTransformerModelForSiamesePreTraining.from_pretrained(
                 model_args.model_name_or_path,
+                detach_predictor=bool(data_args.detach_predictor),
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 cache_dir=model_args.cache_dir,
@@ -444,37 +445,21 @@ def main():
         # When using line_by_line, we just tokenize each nonempty line.
         padding = "max_length" if data_args.pad_to_max_length else False
 
-        if config.model_type == 'hi-transformer':
-            def tokenize_function(examples):
-                # Remove empty lines
-                examples[text_column_name] = [
-                    line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
-                ]
-                return tokenizer(
-                    examples[text_column_name],
-                    padding=padding,
-                    truncation=True,
-                    max_length=max_seq_length,
-                    greedy_chunking=data_args.greedy_chunking,
-                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                    # receives the `special_tokens_mask`.
-                    return_special_tokens_mask=True,
-                )
-        else:
-            def tokenize_function(examples):
-                # Remove empty lines
-                examples[text_column_name] = [
-                    line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
-                ]
-                return tokenizer(
-                    examples[text_column_name],
-                    padding=padding,
-                    truncation=True,
-                    max_length=max_seq_length,
-                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                    # receives the `special_tokens_mask`.
-                    return_special_tokens_mask=True,
-                )
+        def tokenize_function(examples):
+            # Remove empty lines
+            examples[text_column_name] = [
+                line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
+            ]
+            return tokenizer(
+                examples[text_column_name],
+                padding=padding,
+                truncation=True,
+                max_length=max_seq_length,
+                greedy_chunking=data_args.greedy_chunking,
+                # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
+                # receives the `special_tokens_mask`.
+                return_special_tokens_mask=True,
+            )
 
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(
@@ -570,9 +555,8 @@ def main():
     data_collator = DataCollatorForSiamesePreTraining(
         tokenizer=tokenizer,
         mlm=data_args.mlm,
-        siam=data_args.srp or data_args.drp,
+        similarity=data_args.sent_sim or data_args.doc_sim,
         mlm_probability=data_args.mlm_probability,
-        ms_probability=data_args.ms_probability,
         pad_to_multiple_of=config.max_sentence_length,
     )
 
