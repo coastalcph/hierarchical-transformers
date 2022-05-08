@@ -1273,10 +1273,10 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             self.lm_head = HiTransformerLMHead(config)
         if self.config.sent_sim or self.config.doc_sim:
             self.sentencizer = HiTransformerSentencizer(config)
+            self.cosine = nn.CosineSimilarity(dim=1)
         if self.config.doc_sim:
             self.pooler = HiTransformerPooler(config, pooling='max')
             self.document_cls = nn.Linear(config.hidden_size, config.hidden_size)
-            self.sqrt_hd = 1 / torch.sqrt(torch.tensor(config.hidden_size))
         if self.config.sent_sim:
             self.sentence_cls = HiTransformerSentenceHead(config)
 
@@ -1356,17 +1356,13 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
 
         sent_sim_loss = None
         if self.config.sent_sim:
-            loss_fct = CosineEmbeddingLoss()
-            sent_sim_loss = loss_fct(primary_sentence_prediction_scores[sentence_masks].view(-1, self.config.hidden_size),
-                                secondary_sentence_outputs.detach()[sentence_masks].view(-1, self.config.hidden_size)
-                                if self.detach_predictor else secondary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size),
-                                torch.ones((sentence_masks.sum().int(),),
-                                           device=input_ids.device)) / 2
-            sent_sim_loss += loss_fct(primary_sentence_outputs.detach()[sentence_masks].view(-1, self.config.hidden_size)
-                                      if self.detach_predictor else primary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size),
-                                     secondary_sentence_prediction_scores[sentence_masks].view(-1, self.config.hidden_size),
-                                     torch.ones((sentence_masks.sum().int(),),
-                                                device=input_ids.device)) / 2
+            sent_sim_loss = - self.cosine(primary_sentence_prediction_scores[sentence_masks].view(-1, self.config.hidden_size),
+                                          secondary_sentence_outputs.detach()[sentence_masks].view(-1, self.config.hidden_size)
+                                          ).mean()
+            sent_sim_loss += - self.cosine(primary_sentence_outputs.detach()[sentence_masks].view(-1, self.config.hidden_size),
+                                           secondary_sentence_prediction_scores[sentence_masks].view(-1, self.config.hidden_size)
+                                           ).mean()
+            sent_sim_loss /= 2
             if labels is not None:
                 total_loss += sent_sim_loss
             else:
@@ -1375,25 +1371,15 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         doc_sim_loss = None
         doc_std_loss = None
         if self.config.doc_sim:
-            loss_fct = CosineEmbeddingLoss()
             doc_std_loss = normalized_output_std_loss(primary_pooled_outputs) / 2
             doc_std_loss += normalized_output_std_loss(secondary_pooled_outputs) / 2
-            doc_sim_loss = loss_fct(primary_document_prediction_scores,
-                                    secondary_pooled_outputs.detach() if self.detach_predictor else secondary_pooled_outputs,
-                                    torch.ones((input_ids.shape[0],), device=input_ids.device)
-                                    ) / 2
-            doc_sim_loss += loss_fct(primary_pooled_outputs.detach() if self.detach_predictor else primary_pooled_outputs,
-                                     secondary_document_prediction_scores,
-                                     torch.ones((input_ids.shape[0],), device=input_ids.device)
-                                     ) / 2
+            doc_sim_loss = - self.cosine(primary_document_prediction_scores, secondary_pooled_outputs.detach()).mean()
+            doc_sim_loss += - self.cosine(primary_pooled_outputs.detach(), secondary_document_prediction_scores).mean()
+            doc_sim_loss /= 2
             if labels is not None:
                 total_loss += doc_sim_loss
-                if self.penalize_low_std:
-                    total_loss += torch.relu(self.sqrt_hd - doc_std_loss)
             else:
                 total_loss = doc_sim_loss
-                if self.penalize_low_std:
-                    total_loss += torch.relu(self.sqrt_hd - doc_std_loss)
 
         if not return_dict:
             output = (primary_prediction_scores,) + primary_outputs[2:]
