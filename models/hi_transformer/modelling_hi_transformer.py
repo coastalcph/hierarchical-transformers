@@ -1386,9 +1386,9 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
                                      torch.ones((input_ids.shape[0],), device=input_ids.device)
                                      ) / 2
             if labels is not None:
-                total_loss += doc_sim_loss
+                total_loss += doc_sim_loss + doc_std_loss
             else:
-                total_loss = doc_sim_loss
+                total_loss = doc_sim_loss + doc_std_loss
 
         if not return_dict:
             output = (primary_prediction_scores,) + primary_outputs[2:]
@@ -1921,5 +1921,5 @@ def create_position_ids_from_input_ids(input_ids, padding_idx, position_ids):
     return position_ids[:, :input_ids.size(1)].repeat(input_ids.size(0), 1) * mask
 
 
-def normalized_output_std_loss(x, sqrt_hd=1e-3):
+def normalized_output_std_loss(x, sqrt_hd=3e-2):
     return (sqrt_hd - torch.std(x / torch.nn.functional.normalize(x, dim=1), dim=1)).mean()
