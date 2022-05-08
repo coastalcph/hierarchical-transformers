@@ -1289,6 +1289,7 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         position_ids=None,
         labels=None,
         secondary_labels=None,
+        sentence_masks=None,
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
@@ -1353,15 +1354,15 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         sent_sim_loss = None
         if self.config.sent_sim:
             loss_fct = CosineEmbeddingLoss()
-            sent_sim_loss = loss_fct(primary_sentence_prediction_scores.view(-1, self.config.hidden_size),
-                                secondary_sentence_outputs.detach().view(-1, self.config.hidden_size)
-                                if self.detach_predictor else secondary_sentence_outputs.view(-1, self.config.hidden_size),
-                                torch.ones((input_ids.shape[0] * self.config.max_sentences,),
+            sent_sim_loss = loss_fct(primary_sentence_prediction_scores[sentence_masks].view(-1, self.config.hidden_size),
+                                secondary_sentence_outputs.detach()[sentence_masks].view(-1, self.config.hidden_size)
+                                if self.detach_predictor else secondary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size),
+                                torch.ones((sentence_masks.sum().int(),),
                                            device=input_ids.device)) / 2
-            sent_sim_loss += loss_fct(primary_sentence_outputs.detach().view(-1, self.config.hidden_size)
-                                      if self.detach_predictor else primary_sentence_outputs.view(-1, self.config.hidden_size),
-                                     secondary_sentence_prediction_scores.view(-1, self.config.hidden_size),
-                                     torch.ones((input_ids.shape[0] * self.config.max_sentences,),
+            sent_sim_loss += loss_fct(primary_sentence_outputs.detach()[sentence_masks].view(-1, self.config.hidden_size)
+                                      if self.detach_predictor else primary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size),
+                                     secondary_sentence_prediction_scores[sentence_masks].view(-1, self.config.hidden_size),
+                                     torch.ones((sentence_masks.sum().int(),),
                                                 device=input_ids.device)) / 2
             if labels is not None:
                 total_loss += sent_sim_loss

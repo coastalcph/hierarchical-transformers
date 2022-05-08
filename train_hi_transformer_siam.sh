@@ -5,7 +5,7 @@ MODEL_NAME='hi-transformer-p1-grouped-mlm'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
-python language_modelling/run_pretraining_siam_stream.py \
+python language_modelling/run_pretraining_simsiam_stream.py \
     --model_name_or_path data/PLMs/${MODEL_NAME} \
     --dataset_name ./data/wikipedia-dataset \
     --dataset_config_name 20200501.en \

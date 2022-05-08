@@ -377,6 +377,7 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
     mlm_probability: float = 0.15
     pad_to_multiple_of: Optional[int] = None
     return_tensors: str = "pt"
+    max_sentence_length: int = 64
 
     def __post_init__(self):
         if self.mlm and self.tokenizer.mask_token is None:
@@ -404,6 +405,11 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
             batch["input_ids"], batch["labels"] = \
                 self.torch_mask_tokens(original_input_ids, special_tokens_mask=special_tokens_mask)
         if self.similarity:
+            batch['sentence_masks'] = torch.zeros((batch['input_ids'].shape[0],
+                                                   batch['input_ids'].shape[1] // self.max_sentence_length),
+                                                  dtype=torch.bool, device=batch['input_ids'].device)
+            for idx, example in enumerate(secondary_original_input_ids):
+                batch['sentence_masks'][idx] = (example[::self.max_sentence_length] != self.tokenizer.pad_token_id).bool()
             batch["secondary_input_ids"], batch["secondary_labels"] = \
                 self.torch_mask_tokens(secondary_original_input_ids, special_tokens_mask=special_tokens_mask)
         return batch

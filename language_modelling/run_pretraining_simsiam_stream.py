@@ -558,6 +558,7 @@ def main():
         similarity=data_args.sent_sim or data_args.doc_sim,
         mlm_probability=data_args.mlm_probability,
         pad_to_multiple_of=config.max_sentence_length,
+        max_sentence_length=config.max_sentence_length
     )
 
     # Initialize our Trainer
