@@ -1349,11 +1349,13 @@ class Trainer:
         mlm_loss = torch.tensor(0.0).to(args.device)
         sent_sim_loss = torch.tensor(0.0).to(args.device)
         doc_sim_loss = torch.tensor(0.0).to(args.device)
+        doc_std_loss = torch.tensor(0.0).to(args.device)
         # _total_loss_scalar is updated everytime .item() has to be called on tr_loss and stores the sum of all losses
         self._total_loss_scalar = 0.0
         self._mlm_loss_scalar = 0.0
         self._sent_sim_loss_scalar = 0.0
         self._doc_sim_loss_scalar = 0.0
+        self._doc_std_loss_scalar = 0.0
         self._globalstep_last_logged = self.state.global_step
         model.zero_grad()
 
@@ -1423,9 +1425,9 @@ class Trainer:
                 ):
                     # Avoid unnecessary DDP synchronization since there will be no backward pass on this example.
                     with model.no_sync():
-                        tr_loss_step, mlm_loss_step, sent_sim_loss_step, doc_sim_loss_step = self.training_step(model, inputs)
+                        tr_loss_step, mlm_loss_step, sent_sim_loss_step, doc_sim_loss_step, doc_std_loss_step = self.training_step(model, inputs)
                 else:
-                    tr_loss_step, mlm_loss_step, sent_sim_loss_step, doc_sim_loss_step = self.training_step(model, inputs)
+                    tr_loss_step, mlm_loss_step, sent_sim_loss_step, doc_sim_loss_step, doc_std_loss_step = self.training_step(model, inputs)
 
                 if (
                     args.logging_nan_inf_filter
@@ -1437,11 +1439,13 @@ class Trainer:
                     mlm_loss += mlm_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                     sent_sim_loss += sent_sim_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                     doc_sim_loss += doc_sim_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                    doc_std_loss += doc_std_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                 else:
                     tr_loss += tr_loss_step
                     mlm_loss += mlm_loss_step
                     sent_sim_loss += sent_sim_loss_step
                     doc_sim_loss += doc_sim_loss_step
+                    doc_std_loss += doc_std_loss_step
 
                 self.current_flos += float(self.floating_point_ops(inputs))
 
@@ -1506,8 +1510,8 @@ class Trainer:
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
-                    self._maybe_log_save_evaluate(tr_loss, mlm_loss, sent_sim_loss, doc_sim_loss, model,
-                                                  trial, epoch, ignore_keys_for_eval)
+                    self._maybe_log_save_evaluate(tr_loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss,
+                                                  model, trial, epoch, ignore_keys_for_eval)
                 else:
                     self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
 
@@ -1522,7 +1526,7 @@ class Trainer:
                 self.control.should_training_stop = True
 
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(tr_loss, mlm_loss, sent_sim_loss, doc_sim_loss, model,
+            self._maybe_log_save_evaluate(tr_loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, model,
                                           trial, epoch, ignore_keys_for_eval)
 
             if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
@@ -1582,10 +1586,12 @@ class Trainer:
         self._mlm_loss_scalar += mlm_loss.item()
         self._sent_sim_loss_scalar += sent_sim_loss.item()
         self._doc_sim_loss_scalar += doc_sim_loss.item()
+        self._doc_std_loss_scalar += doc_std_loss.item()
         train_loss = self._total_loss_scalar / self.state.global_step
         train_mlm_loss = self._mlm_loss_scalar / self.state.global_step
         train_sent_sim_loss = self._sent_sim_loss_scalar / self.state.global_step
         train_doc_sim_loss = self._doc_sim_loss_scalar / self.state.global_step
+        train_doc_std_loss = self._doc_std_loss_scalar / self.state.global_step
 
         metrics = speed_metrics("train", start_time, num_samples=num_train_samples, num_steps=self.state.max_steps)
         self.store_flos()
@@ -1597,6 +1603,8 @@ class Trainer:
             metrics["train_sent_sim_loss"] = train_sent_sim_loss
         if train_doc_sim_loss != 0:
             metrics["train_doc_sim_loss"] = train_doc_sim_loss
+        if train_doc_std_loss != 0:
+            metrics["train_doc_std_loss"] = train_doc_std_loss
 
         self.is_in_train = False
 
@@ -1623,7 +1631,8 @@ class Trainer:
                 f"There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}."
             )
 
-    def _maybe_log_save_evaluate(self, tr_loss, mlm_loss, sent_sim_loss, doc_sim_loss, model, trial, epoch, ignore_keys_for_eval):
+    def _maybe_log_save_evaluate(self, tr_loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss,
+                                 model, trial, epoch, ignore_keys_for_eval):
         if self.control.should_log:
             if is_torch_tpu_available():
                 xm.mark_step()
@@ -1635,12 +1644,14 @@ class Trainer:
             mlm_loss_scalar = self._nested_gather(mlm_loss).mean().item()
             sent_sim_loss_loss_scalar = self._nested_gather(sent_sim_loss).mean().item()
             doc_sim_loss_loss_scalar = self._nested_gather(doc_sim_loss).mean().item()
+            doc_std_loss_loss_scalar = self._nested_gather(doc_std_loss).mean().item()
 
             # reset tr_loss to zero
             tr_loss -= tr_loss
             mlm_loss -= mlm_loss
             sent_sim_loss -= sent_sim_loss
             doc_sim_loss -= doc_sim_loss
+            doc_std_loss -= doc_std_loss
 
             logs["loss"] = round(tr_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
             if mlm_loss_scalar != 0:
@@ -1649,6 +1660,8 @@ class Trainer:
                 logs["sent_sim_loss"] = round(sent_sim_loss_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
             if doc_sim_loss_loss_scalar != 0:
                 logs["doc_sim_loss"] = round(doc_sim_loss_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            if doc_std_loss_loss_scalar != 0:
+                logs["doc_std_loss"] = round(doc_std_loss_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
             logs["learning_rate"] = self._get_learning_rate()
 
             self._total_loss_scalar += tr_loss_scalar
@@ -2046,7 +2059,7 @@ class Trainer:
             return loss_mb.reduce_mean().detach().to(self.args.device)
 
         with self.autocast_smart_context_manager():
-            loss, mlm_loss, sent_sim_loss, doc_sim_loss = self.compute_loss(model, inputs)
+            loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss = self.compute_loss(model, inputs)
 
         if mlm_loss is None:
             mlm_loss = torch.tensor(0.0).to(loss.device)
@@ -2054,12 +2067,15 @@ class Trainer:
             sent_sim_loss = torch.tensor(0.0).to(loss.device)
         if doc_sim_loss is None:
             doc_sim_loss = torch.tensor(0.0).to(loss.device)
+        if doc_std_loss is None:
+            doc_std_loss = torch.tensor(0.0).to(loss.device)
 
         if self.args.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
             mlm_loss = mlm_loss.mean()
             sent_sim_loss = sent_sim_loss.mean()
             doc_sim_loss = doc_sim_loss.mean()
+            doc_std_loss = doc_std_loss.mean()
 
         if self.args.gradient_accumulation_steps > 1 and not self.deepspeed:
             # deepspeed handles loss scaling by gradient_accumulation_steps in its `backward`
@@ -2067,6 +2083,7 @@ class Trainer:
             mlm_loss = mlm_loss / self.args.gradient_accumulation_steps
             sent_sim_loss = sent_sim_loss / self.args.gradient_accumulation_steps
             doc_sim_loss = doc_sim_loss / self.args.gradient_accumulation_steps
+            doc_std_loss = doc_std_loss / self.args.gradient_accumulation_steps
 
         if self.do_grad_scaling:
             self.scaler.scale(loss).backward()
@@ -2079,7 +2096,7 @@ class Trainer:
         else:
             loss.backward()
 
-        return loss.detach(), mlm_loss.detach(), sent_sim_loss.detach(), doc_sim_loss.detach()
+        return loss.detach(), mlm_loss.detach(), sent_sim_loss.detach(), doc_sim_loss.detach(), doc_std_loss.detach()
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
@@ -2103,8 +2120,8 @@ class Trainer:
             # We don't use .loss here since the model may return tuples instead of ModelOutput.
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
-        return (loss, outputs.mlm_loss, outputs.sent_sim_loss, outputs.doc_sim_loss, outputs) if return_outputs \
-                   else (loss, outputs.mlm_loss, outputs.sent_sim_loss, outputs.doc_sim_loss)
+        return (loss, outputs.mlm_loss, outputs.sent_sim_loss, outputs.doc_sim_loss, outputs.doc_std_loss, outputs) if return_outputs \
+                   else (loss, outputs.mlm_loss, outputs.sent_sim_loss, outputs.doc_sim_loss, outputs.doc_std_loss)
 
 
     def is_local_process_zero(self) -> bool:
@@ -2491,6 +2508,7 @@ class Trainer:
         mlm_losses_host = None
         sent_sim_losses_host = None
         doc_sim_losses_host = None
+        doc_std_losses_host = None
         preds_host = None
         labels_host = None
         inputs_host = None
@@ -2500,9 +2518,11 @@ class Trainer:
         mlm_all_losses = None
         sent_sim_all_losses = None
         doc_sim_all_losses = None
+        doc_std_all_losses = None
         mlm_losses = None
         sent_sim_losses = None
         doc_sim_losses = None
+        doc_std_losses = None
         all_preds = None
         all_labels = None
         # Will be useful when we have an iterable dataset so don't know its length.
@@ -2519,7 +2539,7 @@ class Trainer:
                     batch_size = observed_batch_size
 
             # Prediction step
-            loss, mlm_loss, sent_sim_loss, doc_sim_loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+            loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
 
             if is_torch_tpu_available():
                 xm.mark_step()
@@ -2537,6 +2557,10 @@ class Trainer:
             if doc_sim_loss is not None:
                 doc_sim_losses = self._nested_gather(doc_sim_loss.repeat(batch_size))
                 doc_sim_losses_host = doc_sim_losses if doc_sim_losses_host is None else torch.cat((doc_sim_losses_host, doc_sim_losses), dim=0)
+            if doc_std_loss is not None:
+                doc_std_losses = self._nested_gather(doc_std_loss.repeat(batch_size))
+                doc_std_losses_host = doc_std_losses if doc_std_losses_host is None else torch.cat(
+                    (doc_std_losses_host, doc_std_losses), dim=0)
             if labels is not None:
                 labels = self._pad_across_processes(labels)
                 labels = self._nested_gather(labels)
@@ -2583,6 +2607,10 @@ class Trainer:
         if doc_sim_losses_host is not None:
             doc_sim_losses = nested_numpify(doc_sim_losses_host)
             doc_sim_all_losses = doc_sim_losses if doc_sim_all_losses is None else np.concatenate((doc_sim_all_losses, doc_sim_losses), axis=0)
+        if doc_std_losses_host is not None:
+            doc_std_losses = nested_numpify(doc_std_losses_host)
+            doc_std_all_losses = doc_std_losses if doc_std_all_losses is None else np.concatenate(
+                (doc_std_all_losses, doc_std_losses), axis=0)
         if preds_host is not None:
             logits = nested_numpify(preds_host)
             all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
@@ -2613,6 +2641,8 @@ class Trainer:
             sent_sim_all_losses = sent_sim_all_losses[:num_samples]
         if doc_sim_all_losses is not None:
             doc_sim_all_losses = doc_sim_all_losses[:num_samples]
+        if doc_std_all_losses is not None:
+            doc_std_all_losses = doc_std_all_losses[:num_samples]
         if all_preds is not None:
             all_preds = nested_truncate(all_preds, num_samples)
         if all_labels is not None:
@@ -2635,6 +2665,8 @@ class Trainer:
             metrics[f"{metric_key_prefix}_sent_sim_loss"] = sent_sim_all_losses.mean().item()
         if doc_sim_all_losses is not None:
             metrics[f"{metric_key_prefix}_doc_sim_loss"] = doc_sim_all_losses.mean().item()
+        if doc_std_all_losses is not None:
+            metrics[f"{metric_key_prefix}_doc_std_loss"] = doc_std_all_losses.mean().item()
 
         # Prefix all keys with metric_key_prefix + '_'
         for key in list(metrics.keys()):
@@ -2762,7 +2794,7 @@ class Trainer:
             else:
                 if has_labels:
                     with self.autocast_smart_context_manager():
-                        loss, mlm_loss, sent_sim_loss, doc_sim_loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
+                        loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
                     loss = loss.mean().detach()
                     if mlm_loss is not None:
                         mlm_loss = mlm_loss.mean().detach()
@@ -2770,6 +2802,8 @@ class Trainer:
                         sent_sim_loss = sent_sim_loss.mean().detach()
                     if doc_sim_loss is not None:
                         doc_sim_loss = doc_sim_loss.mean().detach()
+                    if doc_std_loss is not None:
+                        doc_std_loss = doc_std_loss.mean().detach()
 
                     if isinstance(outputs, dict):
                         logits = outputs['prediction_logits']
@@ -2780,6 +2814,7 @@ class Trainer:
                     mlm_loss = None
                     sent_sim_loss = None
                     doc_sim_loss = None
+                    doc_std_loss = None
                     with self.autocast_smart_context_manager():
                         outputs = model(**inputs)
                     if isinstance(outputs, dict):
@@ -2791,13 +2826,13 @@ class Trainer:
                         self._past = outputs[self.args.past_index - 1]
 
         if prediction_loss_only:
-            return (loss, mlm_loss, sent_sim_loss, doc_sim_loss, None, None)
+            return (loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, None, None)
 
         logits = nested_detach(logits)
         if len(logits) == 1:
             logits = logits[0]
 
-        return (loss, mlm_loss, sent_sim_loss, doc_sim_loss, logits, labels)
+        return (loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, logits, labels)
 
     def floating_point_ops(self, inputs: Dict[str, Union[torch.Tensor, Any]]):
         """

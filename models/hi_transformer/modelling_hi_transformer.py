@@ -226,6 +226,7 @@ class HiTransformerForSimPreTrainingOutput(ModelOutput):
     mlm_loss: Optional[torch.FloatTensor] = None
     sent_sim_loss: Optional[torch.FloatTensor] = None
     doc_sim_loss: Optional[torch.FloatTensor] = None
+    doc_std_loss: Optional[torch.FloatTensor] = None
     prediction_logits: torch.FloatTensor = None
     document_prediction_logits: torch.FloatTensor = None
     sentence_prediction_logits: torch.FloatTensor = None
@@ -1274,6 +1275,7 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         if self.config.doc_sim:
             self.pooler = HiTransformerPooler(config, pooling='max')
             self.document_cls = nn.Linear(config.hidden_size, config.hidden_size)
+            self.sqrt_hd = 1 / torch.sqrt(torch.tensor(config.hidden_size))
         if self.config.sent_sim:
             self.sentence_cls = HiTransformerSentenceHead(config)
 
@@ -1370,8 +1372,11 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
                 total_loss = sent_sim_loss
 
         doc_sim_loss = None
+        doc_std_loss = None
         if self.config.doc_sim:
             loss_fct = CosineEmbeddingLoss()
+            doc_std_loss = normalized_output_std_loss(primary_pooled_outputs, self.sqrt_hd) / 2
+            doc_std_loss += normalized_output_std_loss(secondary_pooled_outputs, self.sqrt_hd) / 2
             doc_sim_loss = loss_fct(primary_document_prediction_scores,
                                     secondary_pooled_outputs.detach() if self.detach_predictor else secondary_pooled_outputs,
                                     torch.ones((input_ids.shape[0],), device=input_ids.device)
@@ -1394,6 +1399,7 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             mlm_loss=masked_lm_loss,
             sent_sim_loss=sent_sim_loss,
             doc_sim_loss=doc_sim_loss,
+            doc_std_loss=doc_std_loss,
             prediction_logits=primary_prediction_scores,
             hidden_states=primary_outputs.hidden_states,
             attentions=primary_outputs.attentions,
@@ -1913,3 +1919,7 @@ def create_position_ids_from_input_ids(input_ids, padding_idx, position_ids):
     # The series of casts and type-conversions here are carefully balanced to both work with ONNX export and XLA.
     mask = input_ids.ne(padding_idx).int()
     return position_ids[:, :input_ids.size(1)].repeat(input_ids.size(0), 1) * mask
+
+
+def normalized_output_std_loss(x, sqrt_hd=1e-3):
+    return (sqrt_hd - torch.std(x / torch.nn.functional.normalize(x, dim=1), dim=1)).mean()
