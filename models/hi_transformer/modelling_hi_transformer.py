@@ -1263,10 +1263,11 @@ class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
     HITRANSFORMER_START_DOCSTRING,
 )
 class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
-    def __init__(self, config, detach_predictor=True):
+    def __init__(self, config, detach_predictor=True, penalize_low_std=True):
         super().__init__(config)
 
         self.detach_predictor = detach_predictor
+        self.penalize_low_std = penalize_low_std
         self.hi_transformer = HiTransformerModel(config)
         if self.config.mlm:
             self.lm_head = HiTransformerLMHead(config)
@@ -1375,8 +1376,8 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         doc_std_loss = None
         if self.config.doc_sim:
             loss_fct = CosineEmbeddingLoss()
-            doc_std_loss = normalized_output_std_loss(primary_pooled_outputs, self.sqrt_hd) / 2
-            doc_std_loss += normalized_output_std_loss(secondary_pooled_outputs, self.sqrt_hd) / 2
+            doc_std_loss = normalized_output_std_loss(primary_pooled_outputs) / 2
+            doc_std_loss += normalized_output_std_loss(secondary_pooled_outputs) / 2
             doc_sim_loss = loss_fct(primary_document_prediction_scores,
                                     secondary_pooled_outputs.detach() if self.detach_predictor else secondary_pooled_outputs,
                                     torch.ones((input_ids.shape[0],), device=input_ids.device)
@@ -1387,8 +1388,12 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
                                      ) / 2
             if labels is not None:
                 total_loss += doc_sim_loss
+                if self.penalize_low_std:
+                    total_loss += torch.relu(self.sqrt_hd - doc_std_loss)
             else:
                 total_loss = doc_sim_loss
+                if self.penalize_low_std:
+                    total_loss += torch.relu(self.sqrt_hd - doc_std_loss)
 
         if not return_dict:
             output = (primary_prediction_scores,) + primary_outputs[2:]
@@ -1921,11 +1926,10 @@ def create_position_ids_from_input_ids(input_ids, padding_idx, position_ids):
     return position_ids[:, :input_ids.size(1)].repeat(input_ids.size(0), 1) * mask
 
 
-def normalized_output_std_loss(x, sqrt_hd=3e-2):
+def normalized_output_std_loss(x):
     return torch.std(x / torch.nn.functional.normalize(x, dim=1), dim=0).mean()
 
 
 if __name__ == "__main__":
     x = torch.rand((16, 256), dtype=torch.float)
-    sqrt_hd = 1 / torch.sqrt(torch.tensor(256))
-    std = normalized_output_std_loss(x, sqrt_hd)
+    std = normalized_output_std_loss(x)

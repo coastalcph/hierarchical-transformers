@@ -180,6 +180,12 @@ class DataTrainingArguments:
             "help": "Whether to detach predictor from the siamese network."
         },
     )
+    penalize_low_std: int = field(
+        default=1,
+        metadata={
+            "help": "Whether to detach predictor from the siamese network."
+        },
+    )
     max_train_samples: Optional[int] = field(
         default=None,
         metadata={
@@ -406,6 +412,7 @@ def main():
             model = HiTransformerModelForSiamesePreTraining.from_pretrained(
                 model_args.model_name_or_path,
                 detach_predictor=bool(data_args.detach_predictor),
+                penalize_low_std=bool(data_args.penalize_low_std),
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 cache_dir=model_args.cache_dir,
