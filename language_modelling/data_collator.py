@@ -403,7 +403,8 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
         secondary_original_input_ids = batch['input_ids'].clone()
         if self.mlm or self.similarity:
             batch["input_ids"], batch["labels"] = \
-                self.torch_mask_tokens(original_input_ids, special_tokens_mask=special_tokens_mask)
+                self.torch_mask_tokens(original_input_ids, special_tokens_mask=special_tokens_mask,
+                                       mlm_probability=self.mlm_probability)
         if self.similarity:
             batch['sentence_masks'] = torch.zeros((batch['input_ids'].shape[0],
                                                    batch['input_ids'].shape[1] // self.max_sentence_length),
@@ -411,17 +412,18 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
             for idx, example in enumerate(secondary_original_input_ids):
                 batch['sentence_masks'][idx] = (example[::self.max_sentence_length] != self.tokenizer.pad_token_id).bool()
             batch["secondary_input_ids"], batch["secondary_labels"] = \
-                self.torch_mask_tokens(secondary_original_input_ids, special_tokens_mask=special_tokens_mask)
+                self.torch_mask_tokens(secondary_original_input_ids, special_tokens_mask=special_tokens_mask,
+                                       mlm_probability=self.mlm_probability)
         return batch
 
-    def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None) -> Tuple[Any, Any]:
+    def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None, mlm_probability: Any = 0.2) -> Tuple[Any, Any]:
         """
         Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
         """
 
         labels = inputs.clone()
         # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
-        probability_matrix = torch.full(labels.shape, self.mlm_probability)
+        probability_matrix = torch.full(labels.shape, mlm_probability)
         if special_tokens_mask is None:
             special_tokens_mask = [
                 self.tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()

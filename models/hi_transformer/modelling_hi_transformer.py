@@ -227,6 +227,7 @@ class HiTransformerForSimPreTrainingOutput(ModelOutput):
     sent_sim_loss: Optional[torch.FloatTensor] = None
     doc_sim_loss: Optional[torch.FloatTensor] = None
     doc_std_loss: Optional[torch.FloatTensor] = None
+    doc_cov_loss: Optional[torch.FloatTensor] = None
     prediction_logits: torch.FloatTensor = None
     document_prediction_logits: torch.FloatTensor = None
     sentence_prediction_logits: torch.FloatTensor = None
@@ -689,7 +690,7 @@ class HiTransformerPooler(nn.Module):
         self.pooling = pooling
         if self.pooling == 'attentive':
             self.attentive_pooling = AttentivePooling(config)
-        self.activation = nn.Tanh()
+        self.activation = nn.ReLU()
         self.max_sentence_length = config.max_sentence_length
 
     def forward(self, hidden_states):
@@ -706,11 +707,13 @@ class HiTransformerSentencizer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.activation = nn.ReLU()
         self.max_sentence_length = config.max_sentence_length
 
     def forward(self, hidden_states):
         sentence_repr_hidden_states = hidden_states[:, ::self.max_sentence_length]
         sentence_outputs = self.dense(sentence_repr_hidden_states)
+        sentence_outputs = self.activation(sentence_outputs)
         return sentence_outputs
 
 @add_start_docstrings(
@@ -891,6 +894,21 @@ class HiTransformerSentenceHead(nn.Module):
     def _tie_weights(self):
         # To tie those two weights if they get disconnected (on TPU or when the bias is resized)
         self.bias = self.decoder.bias
+
+
+class HiTransformerSiameseHead(nn.Module):
+    """Hi-Transformer Head for masked language modeling."""
+
+    def __init__(self, config):
+        super().__init__()
+        self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.decoder = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+
+    def forward(self, features):
+        x = self.layer_norm(features)
+        x = self.decoder(x)
+
+        return x
 
 
 @add_start_docstrings("""Hi-Transformer Model with a `language modeling` head on top.""", HITRANSFORMER_START_DOCSTRING)
@@ -1274,12 +1292,11 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         if self.config.sent_sim or self.config.doc_sim:
             self.sentencizer = HiTransformerSentencizer(config)
             self.cosine = nn.CosineSimilarity(dim=1)
+        if self.config.sent_sim:
+            self.sent_head = HiTransformerSiameseHead(config)
         if self.config.doc_sim:
             self.pooler = HiTransformerPooler(config, pooling='max')
-            self.document_cls = nn.Linear(config.hidden_size, config.hidden_size)
-        if self.config.sent_sim:
-            self.sentence_cls = HiTransformerSentenceHead(config)
-
+            self.doc_head = HiTransformerSiameseHead(config)
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -1334,15 +1351,15 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
 
         # Sentence Representation Prediction (SRP)
         if self.config.sent_sim:
-            primary_sentence_prediction_scores = self.sentence_cls(primary_sentence_outputs)
-            secondary_sentence_prediction_scores = self.sentence_cls(secondary_sentence_outputs)
+            primary_sentence_proj_outputs = self.sent_head(primary_sentence_outputs)
+            secondary_sentence_proj_outputs = self.sent_head(secondary_sentence_outputs)
 
         # Document Representation Prediction (DRP)
         if self.config.doc_sim:
             primary_pooled_outputs = self.pooler(primary_sentence_outputs)
-            primary_document_prediction_scores = self.document_cls(primary_pooled_outputs)
+            primary_document_proj_outputs = self.doc_head(primary_pooled_outputs)
             secondary_pooled_outputs = self.pooler(secondary_sentence_outputs)
-            secondary_document_prediction_scores = self.document_cls(secondary_pooled_outputs)
+            secondary_document_proj_outputs = self.doc_head(secondary_pooled_outputs)
 
 
         total_loss = None
@@ -1356,13 +1373,9 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
 
         sent_sim_loss = None
         if self.config.sent_sim:
-            sent_sim_loss = - self.cosine(primary_sentence_prediction_scores[sentence_masks].view(-1, self.config.hidden_size),
-                                          secondary_sentence_outputs.detach()[sentence_masks].view(-1, self.config.hidden_size)
-                                          ).mean()
-            sent_sim_loss += - self.cosine(primary_sentence_outputs.detach()[sentence_masks].view(-1, self.config.hidden_size),
-                                           secondary_sentence_prediction_scores[sentence_masks].view(-1, self.config.hidden_size)
-                                           ).mean()
-            sent_sim_loss /= 2
+            sent_sim_loss = 1 - self.cosine(
+                primary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size),
+                secondary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size)).mean()
             if labels is not None:
                 total_loss += sent_sim_loss
             else:
@@ -1370,16 +1383,16 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
 
         doc_sim_loss = None
         doc_std_loss = None
+        doc_cov_loss = None
         if self.config.doc_sim:
-            doc_std_loss = normalized_output_std_loss(primary_pooled_outputs) / 2
-            doc_std_loss += normalized_output_std_loss(secondary_pooled_outputs) / 2
-            doc_sim_loss = - self.cosine(primary_document_prediction_scores, secondary_pooled_outputs.detach()).mean()
-            doc_sim_loss += - self.cosine(primary_pooled_outputs.detach(), secondary_document_prediction_scores).mean()
-            doc_sim_loss /= 2
+            doc_sim_loss = 1 - self.cosine(primary_document_proj_outputs,
+                                           secondary_document_proj_outputs).mean()
+            doc_std_loss, doc_cov_loss = vic_reg(primary_document_proj_outputs,
+                                                 secondary_document_proj_outputs)
             if labels is not None:
-                total_loss += doc_sim_loss
+                total_loss += doc_sim_loss + doc_std_loss + 0.1 * doc_cov_loss
             else:
-                total_loss = doc_sim_loss
+                total_loss = doc_sim_loss + doc_std_loss + 0.1 * doc_cov_loss
 
         if not return_dict:
             output = (primary_prediction_scores,) + primary_outputs[2:]
@@ -1391,6 +1404,7 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             sent_sim_loss=sent_sim_loss,
             doc_sim_loss=doc_sim_loss,
             doc_std_loss=doc_std_loss,
+            doc_cov_loss=doc_cov_loss,
             prediction_logits=primary_prediction_scores,
             hidden_states=primary_outputs.hidden_states,
             attentions=primary_outputs.attentions,
@@ -1916,6 +1930,26 @@ def normalized_output_std_loss(x):
     return torch.std(x / torch.nn.functional.normalize(x, dim=1), dim=0).mean()
 
 
+def vic_reg(x: torch.Tensor, y: torch.Tensor):
+    std_x = torch.sqrt(x.var(dim=0) + 0.0001)
+    std_y = torch.sqrt(y.var(dim=0) + 0.0001)
+    std_loss = torch.mean(torch.relu(1 - std_x)) / 2 + torch.mean(torch.relu(1 - std_y)) / 2
+
+    cov_x = (x.T @ x) / (x.shape[0] - 1)
+    cov_y = (y.T @ y) / (y.shape[0] - 1)
+    cov_loss = off_diagonal(cov_x).pow_(2).sum().div(x.shape[-1]) + \
+               off_diagonal(cov_y).pow_(2).sum().div(y.shape[-1])
+
+    return std_loss, cov_loss
+
+
+def off_diagonal(x):
+    n, m = x.shape
+    assert n == m
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+
 if __name__ == "__main__":
-    x = torch.rand((16, 256), dtype=torch.float)
-    std = normalized_output_std_loss(x)
+    x = torch.rand((2, 5), dtype=torch.float)
+    y = torch.rand((2, 5), dtype=torch.float)
+    losses = vic_reg(x, y)
