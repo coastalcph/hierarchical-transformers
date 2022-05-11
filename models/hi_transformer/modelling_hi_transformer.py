@@ -1345,7 +1345,8 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         # Masked Language Modeling (MLM)
         if self.config.mlm:
             primary_prediction_scores = self.lm_head(primary_sequence_output)
-            secondary_prediction_scores = self.lm_head(secondary_sequence_output)
+            if secondary_labels is not None:
+                secondary_prediction_scores = self.lm_head(secondary_sequence_output)
 
         if self.config.sent_sim or self.config.doc_sim:
             primary_sentence_outputs = self.sentencizer(primary_sequence_output)
@@ -1370,6 +1371,7 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             loss_fct = CrossEntropyLoss()
             masked_lm_loss = loss_fct(primary_prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
             total_loss = masked_lm_loss.clone() / 2
+        if secondary_labels is not None:
             masked_lm_loss = loss_fct(secondary_prediction_scores.view(-1, self.config.vocab_size), secondary_labels.view(-1))
             total_loss += masked_lm_loss / 2
 

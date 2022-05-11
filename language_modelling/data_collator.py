@@ -75,7 +75,7 @@ class DataCollatorForBoWPreTraining(DataCollatorMixin):
     sentence_embedder: Optional[bool] = None
     sentence_embedding_size: Optional[int] = 256
     mlm_probability: float = 0.15
-    ms_probability: float = 0.20
+    ms_probability: float = 0.25
     pad_to_multiple_of: Optional[int] = None
     return_tensors: str = "pt"
     max_sentence_length: int = 64
@@ -378,7 +378,7 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
     pad_to_multiple_of: Optional[int] = None
     return_tensors: str = "pt"
     max_sentence_length: int = 64
-    mask_sentences: bool = False
+    sentence_masking: bool = False
     ms_probability: float = 0.25
 
     def __post_init__(self):
@@ -407,7 +407,10 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
             batch["input_ids"], batch["labels"] = \
                 self.torch_mask_tokens(original_input_ids, special_tokens_mask=special_tokens_mask,
                                        mlm_probability=self.mlm_probability)
-        if self.similarity:
+        if self.similarity and self.sentence_masking:
+            batch["secondary_input_ids"], batch['sentence_masks'] = \
+                self.torch_mask_sentences(secondary_original_input_ids, batch['attention_mask'])
+        else:
             batch['sentence_masks'] = torch.zeros((batch['input_ids'].shape[0],
                                                    batch['input_ids'].shape[1] // self.max_sentence_length),
                                                   dtype=torch.bool, device=batch['input_ids'].device)
@@ -454,24 +457,23 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
         """
         Define masked sentences for masked sentence tasks.
         """
-        import torch
-
-        sentence_masks = torch.zeros((attention_mask.shape[0], int(len(attention_mask[0])/self.max_sentence_length)), dtype=torch.long)
+        sentence_masks = torch.zeros((inputs.shape[0], inputs.shape[1] // self.max_sentence_length),
+                                     dtype=torch.bool, device=inputs.device)
 
         for doc_idx, _ in enumerate(attention_mask):
             # Find padded sentences
-            sentence_mask = [attention_mask[doc_idx][i:i + self.max_sentence_length].sum() != self.tokenizer.pad_token_id
-                             for i in range(0, len(attention_mask[0]), self.max_sentence_length)]
-            sentence_mask = torch.tensor(sentence_mask, dtype=torch.bool)
+            sentence_mask = (attention_mask[doc_idx][::self.max_sentence_length] != self.tokenizer.pad_token_id).bool()
             # We sample a few sentences in each sequence (with probability `self.ms_probability`)
             probability_matrix = torch.full(sentence_mask.shape, self.ms_probability)
             probability_matrix.masked_fill_(~sentence_mask, value=0.0)
             masked_indices = torch.bernoulli(probability_matrix).int()
             if masked_indices.sum() == 0:
                 masked_indices[0] = 1
-            sentence_masks[doc_idx] = masked_indices
+            sentence_masks[doc_idx] = masked_indices.bool()
             for sent_idx, mask_id in enumerate(sentence_masks[doc_idx]):
-                inputs[doc_idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length] = self.tokenizer.mask_token_id
+                if mask_id:
+                    inputs[doc_idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length] \
+                        = self.tokenizer.mask_token_id
 
         return inputs, sentence_masks
 

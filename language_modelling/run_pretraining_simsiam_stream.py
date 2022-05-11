@@ -180,12 +180,6 @@ class DataTrainingArguments:
             "help": "Whether to detach predictor from the siamese network."
         },
     )
-    penalize_low_std: int = field(
-        default=1,
-        metadata={
-            "help": "Whether to detach predictor from the siamese network."
-        },
-    )
     max_train_samples: Optional[int] = field(
         default=None,
         metadata={
@@ -223,6 +217,15 @@ class DataTrainingArguments:
         metadata={
             "help": "Whether to use feature regularization (variance, covariance) losses"
         },
+    )
+    sentence_masking: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use sentence masking"
+        },
+    )
+    sm_probability: float = field(
+        default=0.25, metadata={"help": "Ratio of sentences to mask for similarity loss"}
     )
 
     def __post_init__(self):
@@ -572,7 +575,9 @@ def main():
         similarity=data_args.sent_sim or data_args.doc_sim,
         mlm_probability=data_args.mlm_probability,
         pad_to_multiple_of=config.max_sentence_length,
-        max_sentence_length=config.max_sentence_length
+        max_sentence_length=config.max_sentence_length,
+        sentence_masking=data_args.sentence_masking,
+        ms_probability=data_args.mlm_probability
     )
 
     # Initialize our Trainer
