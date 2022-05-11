@@ -419,7 +419,7 @@ def main():
             model = HiTransformerModelForSiamesePreTraining.from_pretrained(
                 model_args.model_name_or_path,
                 detach_predictor=bool(data_args.detach_predictor),
-                penalize_low_std=bool(data_args.penalize_low_std),
+                feature_regularization=bool(data_args.feature_regularization),
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 cache_dir=model_args.cache_dir,
