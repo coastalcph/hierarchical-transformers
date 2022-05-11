@@ -108,12 +108,6 @@ class ModelArguments:
             "with private models)."
         },
     )
-    feature_regularization: bool = field(
-        default=False,
-        metadata={
-            "help": "Whether to use feature regularization (variance, covariance) losses"
-        },
-    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
@@ -222,6 +216,12 @@ class DataTrainingArguments:
         default=False,
         metadata={
             "help": "Whether to add masked sentence representation similarity in pre-training objectives"
+        },
+    )
+    feature_regularization: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use feature regularization (variance, covariance) losses"
         },
     )
 
