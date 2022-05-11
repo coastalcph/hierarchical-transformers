@@ -225,6 +225,8 @@ class HiTransformerForSimPreTrainingOutput(ModelOutput):
     loss: Optional[torch.FloatTensor] = None
     mlm_loss: Optional[torch.FloatTensor] = None
     sent_sim_loss: Optional[torch.FloatTensor] = None
+    sent_std_loss: Optional[torch.FloatTensor] = None
+    sent_cov_loss: Optional[torch.FloatTensor] = None
     doc_sim_loss: Optional[torch.FloatTensor] = None
     doc_std_loss: Optional[torch.FloatTensor] = None
     doc_cov_loss: Optional[torch.FloatTensor] = None
@@ -1281,11 +1283,11 @@ class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
     HITRANSFORMER_START_DOCSTRING,
 )
 class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
-    def __init__(self, config, detach_predictor=True, penalize_low_std=True):
+    def __init__(self, config, detach_predictor=True, feature_regularization=True):
         super().__init__(config)
 
         self.detach_predictor = detach_predictor
-        self.penalize_low_std = penalize_low_std
+        self.feature_regularization = feature_regularization
         self.hi_transformer = HiTransformerModel(config)
         if self.config.mlm:
             self.lm_head = HiTransformerLMHead(config)
@@ -1372,10 +1374,14 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             total_loss += masked_lm_loss / 2
 
         sent_sim_loss = None
+        sent_std_loss = None
+        sent_cov_loss = None
         if self.config.sent_sim:
             sent_sim_loss = 1 - self.cosine(
                 primary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size),
                 secondary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size)).mean()
+            sent_std_loss, sent_cov_loss = vic_reg(primary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size),
+                                                 secondary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size))
             if labels is not None:
                 total_loss += sent_sim_loss
             else:
@@ -1387,12 +1393,15 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         if self.config.doc_sim:
             doc_sim_loss = 1 - self.cosine(primary_document_proj_outputs,
                                            secondary_document_proj_outputs).mean()
-            doc_std_loss, doc_cov_loss = vic_reg(primary_document_proj_outputs,
-                                                 secondary_document_proj_outputs)
+            doc_std_loss, doc_cov_loss = vic_reg(primary_document_proj_outputs, secondary_document_proj_outputs)
             if labels is not None:
-                total_loss += doc_sim_loss + doc_std_loss + 0.1 * doc_cov_loss
+                total_loss += doc_sim_loss
+                if self.feature_regularization:
+                    total_loss += doc_std_loss + 0.1 * doc_cov_loss
             else:
-                total_loss = doc_sim_loss + doc_std_loss + 0.1 * doc_cov_loss
+                total_loss = doc_sim_loss
+                if self.feature_regularization:
+                    total_loss += doc_std_loss + 0.1 * doc_cov_loss
 
         if not return_dict:
             output = (primary_prediction_scores,) + primary_outputs[2:]
@@ -1402,6 +1411,8 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             loss=total_loss,
             mlm_loss=masked_lm_loss,
             sent_sim_loss=sent_sim_loss,
+            sent_std_loss=sent_std_loss,
+            sent_cov_loss=sent_cov_loss,
             doc_sim_loss=doc_sim_loss,
             doc_std_loss=doc_std_loss,
             doc_cov_loss=doc_cov_loss,

@@ -1348,6 +1348,8 @@ class Trainer:
         tr_loss = torch.tensor(0.0).to(args.device)
         mlm_loss = torch.tensor(0.0).to(args.device)
         sent_sim_loss = torch.tensor(0.0).to(args.device)
+        sent_std_loss = torch.tensor(0.0).to(args.device)
+        sent_cov_loss = torch.tensor(0.0).to(args.device)
         doc_sim_loss = torch.tensor(0.0).to(args.device)
         doc_std_loss = torch.tensor(0.0).to(args.device)
         doc_cov_loss = torch.tensor(0.0).to(args.device)
@@ -1355,6 +1357,8 @@ class Trainer:
         self._total_loss_scalar = 0.0
         self._mlm_loss_scalar = 0.0
         self._sent_sim_loss_scalar = 0.0
+        self._sent_std_loss_scalar = 0.0
+        self._sent_cov_loss_scalar = 0.0
         self._doc_sim_loss_scalar = 0.0
         self._doc_std_loss_scalar = 0.0
         self._doc_cov_loss_scalar = 0.0
@@ -1427,9 +1431,11 @@ class Trainer:
                 ):
                     # Avoid unnecessary DDP synchronization since there will be no backward pass on this example.
                     with model.no_sync():
-                        tr_loss_step, mlm_loss_step, sent_sim_loss_step, doc_sim_loss_step, doc_std_loss_step, doc_cov_loss_step = self.training_step(model, inputs)
+                        tr_loss_step, mlm_loss_step, sent_sim_loss_step, sent_std_loss_step, sent_cov_loss_step, \
+                        doc_sim_loss_step, doc_std_loss_step, doc_cov_loss_step = self.training_step(model, inputs)
                 else:
-                    tr_loss_step, mlm_loss_step, sent_sim_loss_step, doc_sim_loss_step, doc_std_loss_step, doc_cov_loss_step = self.training_step(model, inputs)
+                    tr_loss_step, mlm_loss_step, sent_sim_loss_step, sent_std_loss_step, sent_cov_loss_step, \
+                    doc_sim_loss_step, doc_std_loss_step, doc_cov_loss_step = self.training_step(model, inputs)
 
                 if (
                     args.logging_nan_inf_filter
@@ -1440,6 +1446,8 @@ class Trainer:
                     tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                     mlm_loss += mlm_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                     sent_sim_loss += sent_sim_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                    sent_std_loss += sent_std_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                    sent_cov_loss += sent_cov_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                     doc_sim_loss += doc_sim_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                     doc_std_loss += doc_std_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                     doc_cov_loss += doc_cov_loss / (1 + self.state.global_step - self._globalstep_last_logged)
@@ -1447,6 +1455,8 @@ class Trainer:
                     tr_loss += tr_loss_step
                     mlm_loss += mlm_loss_step
                     sent_sim_loss += sent_sim_loss_step
+                    sent_std_loss += sent_std_loss_step
+                    sent_cov_loss += sent_cov_loss_step
                     doc_sim_loss += doc_sim_loss_step
                     doc_std_loss += doc_std_loss_step
                     doc_cov_loss += doc_cov_loss_step
@@ -1514,7 +1524,8 @@ class Trainer:
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
 
-                    self._maybe_log_save_evaluate(tr_loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, doc_cov_loss,
+                    self._maybe_log_save_evaluate(tr_loss, mlm_loss, sent_sim_loss, sent_std_loss, sent_cov_loss,
+                                                  doc_sim_loss, doc_std_loss, doc_cov_loss,
                                                   model, trial, epoch, ignore_keys_for_eval)
                 else:
                     self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
@@ -1530,7 +1541,8 @@ class Trainer:
                 self.control.should_training_stop = True
 
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(tr_loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, doc_cov_loss,
+            self._maybe_log_save_evaluate(tr_loss, mlm_loss, sent_sim_loss, sent_std_loss, sent_cov_loss,
+                                          doc_sim_loss, doc_std_loss, doc_cov_loss,
                                           model, trial, epoch, ignore_keys_for_eval)
 
             if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
@@ -1589,12 +1601,16 @@ class Trainer:
         self._total_loss_scalar += tr_loss.item()
         self._mlm_loss_scalar += mlm_loss.item()
         self._sent_sim_loss_scalar += sent_sim_loss.item()
+        self._sent_std_loss_scalar += sent_std_loss.item()
+        self._sent_cov_loss_scalar += sent_cov_loss.item()
         self._doc_sim_loss_scalar += doc_sim_loss.item()
         self._doc_std_loss_scalar += doc_std_loss.item()
         self._doc_cov_loss_scalar += doc_cov_loss.item()
         train_loss = self._total_loss_scalar / self.state.global_step
         train_mlm_loss = self._mlm_loss_scalar / self.state.global_step
         train_sent_sim_loss = self._sent_sim_loss_scalar / self.state.global_step
+        train_sent_std_loss = self._sent_std_loss_scalar / self.state.global_step
+        train_sent_cov_loss = self._sent_cov_loss_scalar / self.state.global_step
         train_doc_sim_loss = self._doc_sim_loss_scalar / self.state.global_step
         train_doc_std_loss = self._doc_std_loss_scalar / self.state.global_step
         train_doc_cov_loss = self._doc_cov_loss_scalar / self.state.global_step
@@ -1607,6 +1623,10 @@ class Trainer:
             metrics["train_mlm_loss"] = train_mlm_loss
         if train_sent_sim_loss != 0:
             metrics["train_sent_sim_loss"] = train_sent_sim_loss
+        if train_sent_std_loss != 0:
+            metrics["train_sent_std_loss"] = train_sent_std_loss
+        if train_sent_cov_loss != 0:
+            metrics["train_sent_cov_loss"] = train_sent_cov_loss
         if train_doc_sim_loss != 0:
             metrics["train_doc_sim_loss"] = train_doc_sim_loss
         if train_doc_std_loss != 0:
@@ -1639,7 +1659,8 @@ class Trainer:
                 f"There were unexpected keys in the checkpoint model loaded: {load_result.unexpected_keys}."
             )
 
-    def _maybe_log_save_evaluate(self, tr_loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, doc_cov_loss,
+    def _maybe_log_save_evaluate(self, tr_loss, mlm_loss, sent_sim_loss, sent_std_loss, sent_cov_loss,
+                                 doc_sim_loss, doc_std_loss, doc_cov_loss,
                                  model, trial, epoch, ignore_keys_for_eval):
         if self.control.should_log:
             if is_torch_tpu_available():
@@ -1651,6 +1672,8 @@ class Trainer:
             tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
             mlm_loss_scalar = self._nested_gather(mlm_loss).mean().item()
             sent_sim_loss_loss_scalar = self._nested_gather(sent_sim_loss).mean().item()
+            sent_std_loss_loss_scalar = self._nested_gather(sent_std_loss).mean().item()
+            sent_cov_loss_loss_scalar = self._nested_gather(sent_cov_loss).mean().item()
             doc_sim_loss_loss_scalar = self._nested_gather(doc_sim_loss).mean().item()
             doc_std_loss_loss_scalar = self._nested_gather(doc_std_loss).mean().item()
             doc_cov_loss_loss_scalar = self._nested_gather(doc_cov_loss).mean().item()
@@ -1659,6 +1682,8 @@ class Trainer:
             tr_loss -= tr_loss
             mlm_loss -= mlm_loss
             sent_sim_loss -= sent_sim_loss
+            sent_std_loss -= sent_std_loss
+            sent_cov_loss -= sent_cov_loss
             doc_sim_loss -= doc_sim_loss
             doc_std_loss -= doc_std_loss
             doc_cov_loss -= doc_cov_loss
@@ -1668,6 +1693,10 @@ class Trainer:
                 logs["mlm_loss"] = round(mlm_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
             if sent_sim_loss_loss_scalar != 0:
                 logs["sent_sim_loss"] = round(sent_sim_loss_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            if sent_std_loss_loss_scalar != 0:
+                logs["sent_std_loss"] = round(sent_std_loss_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
+            if sent_cov_loss_loss_scalar != 0:
+                logs["sent_cov_loss"] = round(sent_cov_loss_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
             if doc_sim_loss_loss_scalar != 0:
                 logs["doc_sim_loss"] = round(doc_sim_loss_loss_scalar / (self.state.global_step - self._globalstep_last_logged), 4)
             if doc_std_loss_loss_scalar != 0:
@@ -2071,12 +2100,16 @@ class Trainer:
             return loss_mb.reduce_mean().detach().to(self.args.device)
 
         with self.autocast_smart_context_manager():
-            loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, doc_cov_loss = self.compute_loss(model, inputs)
+            loss, mlm_loss, sent_sim_loss, sent_std_loss, sent_cov_loss, doc_sim_loss, doc_std_loss, doc_cov_loss = self.compute_loss(model, inputs)
 
         if mlm_loss is None:
             mlm_loss = torch.tensor(0.0).to(loss.device)
         if sent_sim_loss is None:
             sent_sim_loss = torch.tensor(0.0).to(loss.device)
+        if sent_std_loss is None:
+            sent_std_loss = torch.tensor(0.0).to(loss.device)
+        if sent_cov_loss is None:
+            sent_cov_loss = torch.tensor(0.0).to(loss.device)
         if doc_sim_loss is None:
             doc_sim_loss = torch.tensor(0.0).to(loss.device)
         if doc_std_loss is None:
@@ -2088,6 +2121,8 @@ class Trainer:
             loss = loss.mean()  # mean() to average on multi-gpu parallel training
             mlm_loss = mlm_loss.mean()
             sent_sim_loss = sent_sim_loss.mean()
+            sent_std_loss = sent_std_loss.mean()
+            sent_cov_loss = sent_cov_loss.mean()
             doc_sim_loss = doc_sim_loss.mean()
             doc_std_loss = doc_std_loss.mean()
             doc_cov_loss = doc_cov_loss.mean()
@@ -2097,6 +2132,8 @@ class Trainer:
             loss = loss / self.args.gradient_accumulation_steps
             mlm_loss = mlm_loss / self.args.gradient_accumulation_steps
             sent_sim_loss = sent_sim_loss / self.args.gradient_accumulation_steps
+            sent_std_loss = sent_std_loss / self.args.gradient_accumulation_steps
+            sent_cov_loss = sent_cov_loss / self.args.gradient_accumulation_steps
             doc_sim_loss = doc_sim_loss / self.args.gradient_accumulation_steps
             doc_std_loss = doc_std_loss / self.args.gradient_accumulation_steps
             doc_cov_loss = doc_cov_loss / self.args.gradient_accumulation_steps
@@ -2112,7 +2149,8 @@ class Trainer:
         else:
             loss.backward()
 
-        return loss.detach(), mlm_loss.detach(), sent_sim_loss.detach(), doc_sim_loss.detach(), doc_std_loss.detach(), doc_cov_loss.detach()
+        return loss.detach(), mlm_loss.detach(), sent_sim_loss.detach(), sent_std_loss.detach(), sent_cov_loss.detach(), \
+               doc_sim_loss.detach(), doc_std_loss.detach(), doc_cov_loss.detach()
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
@@ -2136,8 +2174,10 @@ class Trainer:
             # We don't use .loss here since the model may return tuples instead of ModelOutput.
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
-        return (loss, outputs.mlm_loss, outputs.sent_sim_loss, outputs.doc_sim_loss, outputs.doc_std_loss, outputs.doc_cov_loss, outputs) if return_outputs \
-                   else (loss, outputs.mlm_loss, outputs.sent_sim_loss, outputs.doc_sim_loss, outputs.doc_std_loss, outputs.doc_cov_loss)
+        return (loss, outputs.mlm_loss, outputs.sent_sim_loss, outputs.sent_std_loss, outputs.sent_cov_loss,
+                outputs.doc_sim_loss, outputs.doc_std_loss, outputs.doc_cov_loss, outputs) if return_outputs \
+                   else (loss, outputs.mlm_loss, outputs.sent_sim_loss, outputs.sent_std_loss, outputs.sent_cov_loss,
+                         outputs.doc_sim_loss, outputs.doc_std_loss, outputs.doc_cov_loss)
 
 
     def is_local_process_zero(self) -> bool:
@@ -2523,6 +2563,8 @@ class Trainer:
         losses_host = None
         mlm_losses_host = None
         sent_sim_losses_host = None
+        sent_std_losses_host = None
+        sent_cov_losses_host = None
         doc_sim_losses_host = None
         doc_std_losses_host = None
         doc_cov_losses_host = None
@@ -2534,11 +2576,15 @@ class Trainer:
         all_losses = None
         mlm_all_losses = None
         sent_sim_all_losses = None
+        sent_std_all_losses = None
+        sent_cov_all_losses = None
         doc_sim_all_losses = None
         doc_std_all_losses = None
         doc_cov_all_losses = None
         mlm_losses = None
         sent_sim_losses = None
+        sent_std_losses = None
+        sent_cov_losses = None
         doc_sim_losses = None
         doc_std_losses = None
         doc_cov_losses = None
@@ -2558,7 +2604,7 @@ class Trainer:
                     batch_size = observed_batch_size
 
             # Prediction step
-            loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, doc_cov_loss, logits, labels = \
+            loss, mlm_loss, sent_sim_loss, sent_std_loss, sent_cov_loss, doc_sim_loss, doc_std_loss, doc_cov_loss, logits, labels = \
                 self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
 
             if is_torch_tpu_available():
@@ -2574,6 +2620,12 @@ class Trainer:
             if sent_sim_loss is not None:
                 sent_sim_losses = self._nested_gather(sent_sim_loss.repeat(batch_size))
                 sent_sim_losses_host = sent_sim_losses if sent_sim_losses_host is None else torch.cat((sent_sim_losses_host, sent_sim_losses), dim=0)
+            if sent_std_loss is not None:
+                sent_std_losses = self._nested_gather(sent_std_loss.repeat(batch_size))
+                sent_std_losses_host = sent_std_losses if sent_std_losses_host is None else torch.cat((sent_std_losses_host, sent_std_losses), dim=0)
+            if sent_cov_loss is not None:
+                sent_cov_losses = self._nested_gather(sent_cov_loss.repeat(batch_size))
+                sent_cov_losses_host = sent_cov_losses if sent_cov_losses_host is None else torch.cat((sent_cov_losses_host, sent_cov_losses), dim=0)
             if doc_sim_loss is not None:
                 doc_sim_losses = self._nested_gather(doc_sim_loss.repeat(batch_size))
                 doc_sim_losses_host = doc_sim_losses if doc_sim_losses_host is None else torch.cat((doc_sim_losses_host, doc_sim_losses), dim=0)
@@ -2626,6 +2678,12 @@ class Trainer:
         if sent_sim_losses_host is not None:
             sent_sim_losses = nested_numpify(sent_sim_losses_host)
             sent_sim_all_losses = sent_sim_losses if sent_sim_all_losses is None else np.concatenate((sent_sim_all_losses, sent_sim_losses), axis=0)
+        if sent_std_losses_host is not None:
+            sent_std_losses = nested_numpify(sent_std_losses_host)
+            sent_std_all_losses = sent_std_losses if sent_std_all_losses is None else np.concatenate((sent_std_all_losses, sent_std_losses), axis=0)
+        if sent_cov_losses_host is not None:
+            sent_cov_losses = nested_numpify(sent_cov_losses_host)
+            sent_cov_all_losses = sent_cov_losses if sent_cov_all_losses is None else np.concatenate((sent_cov_all_losses, sent_cov_losses), axis=0)
         if doc_sim_losses_host is not None:
             doc_sim_losses = nested_numpify(doc_sim_losses_host)
             doc_sim_all_losses = doc_sim_losses if doc_sim_all_losses is None else np.concatenate((doc_sim_all_losses, doc_sim_losses), axis=0)
@@ -2663,6 +2721,10 @@ class Trainer:
             mlm_all_losses = mlm_all_losses[:num_samples]
         if sent_sim_all_losses is not None:
             sent_sim_all_losses = sent_sim_all_losses[:num_samples]
+        if sent_std_all_losses is not None:
+            sent_std_all_losses = sent_std_all_losses[:num_samples]
+        if sent_cov_all_losses is not None:
+            sent_cov_all_losses = sent_cov_all_losses[:num_samples]
         if doc_sim_all_losses is not None:
             doc_sim_all_losses = doc_sim_all_losses[:num_samples]
         if doc_std_all_losses is not None:
@@ -2689,6 +2751,10 @@ class Trainer:
             metrics[f"{metric_key_prefix}_mlm_loss"] = mlm_all_losses.mean().item()
         if sent_sim_all_losses is not None:
             metrics[f"{metric_key_prefix}_sent_sim_loss"] = sent_sim_all_losses.mean().item()
+        if sent_std_all_losses is not None:
+            metrics[f"{metric_key_prefix}_sent_std_loss"] = sent_std_all_losses.mean().item()
+        if sent_cov_all_losses is not None:
+            metrics[f"{metric_key_prefix}_sent_cov_loss"] = sent_cov_all_losses.mean().item()
         if doc_sim_all_losses is not None:
             metrics[f"{metric_key_prefix}_doc_sim_loss"] = doc_sim_all_losses.mean().item()
         if doc_std_all_losses is not None:
@@ -2822,12 +2888,17 @@ class Trainer:
             else:
                 if has_labels:
                     with self.autocast_smart_context_manager():
-                        loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, doc_cov_loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
+                        loss, mlm_loss, sent_sim_loss, sent_std_loss, sent_cov_loss, \
+                        doc_sim_loss, doc_std_loss, doc_cov_loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
                     loss = loss.mean().detach()
                     if mlm_loss is not None:
                         mlm_loss = mlm_loss.mean().detach()
                     if sent_sim_loss is not None:
                         sent_sim_loss = sent_sim_loss.mean().detach()
+                    if sent_std_loss is not None:
+                        sent_std_loss = sent_std_loss.mean().detach()
+                    if sent_cov_loss is not None:
+                        sent_cov_loss = sent_cov_loss.mean().detach()
                     if doc_sim_loss is not None:
                         doc_sim_loss = doc_sim_loss.mean().detach()
                     if doc_std_loss is not None:
@@ -2843,6 +2914,8 @@ class Trainer:
                     loss = None
                     mlm_loss = None
                     sent_sim_loss = None
+                    sent_std_loss = None
+                    sent_cov_loss = None
                     doc_sim_loss = None
                     doc_std_loss = None
                     doc_cov_loss = None
@@ -2857,13 +2930,13 @@ class Trainer:
                         self._past = outputs[self.args.past_index - 1]
 
         if prediction_loss_only:
-            return (loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, doc_cov_loss, None, None)
+            return (loss, mlm_loss, sent_sim_loss, sent_std_loss, sent_cov_loss, doc_sim_loss, doc_std_loss, doc_cov_loss, None, None)
 
         logits = nested_detach(logits)
         if len(logits) == 1:
             logits = logits[0]
 
-        return (loss, mlm_loss, sent_sim_loss, doc_sim_loss, doc_std_loss, doc_cov_loss, logits, labels)
+        return (loss, mlm_loss, sent_sim_loss, sent_std_loss, sent_cov_loss, doc_sim_loss, doc_std_loss, doc_cov_loss, logits, labels)
 
     def floating_point_ops(self, inputs: Dict[str, Union[torch.Tensor, Any]]):
         """

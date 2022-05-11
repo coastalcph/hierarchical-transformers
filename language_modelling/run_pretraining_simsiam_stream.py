@@ -108,6 +108,12 @@ class ModelArguments:
             "with private models)."
         },
     )
+    feature_regularization: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use feature regularization (variance, covariance) losses"
+        },
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
@@ -383,6 +389,7 @@ def main():
     config.mlm = data_args.mlm
     config.sent_sim = data_args.sent_sim
     config.doc_sim = data_args.doc_sim
+    config.feature_regularization = data_args.feature_regularization
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,

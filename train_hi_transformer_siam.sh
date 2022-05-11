@@ -11,7 +11,7 @@ python language_modelling/run_pretraining_simsiam_stream.py \
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
-    --output_dir data/PLMs/${MODEL_NAME}-vicreg \
+    --output_dir data/PLMs/${MODEL_NAME}-vicreg-noreg \
     --overwrite_output_dir \
     --logging_steps 500 \
     --evaluation_strategy steps \
@@ -34,6 +34,7 @@ python language_modelling/run_pretraining_simsiam_stream.py \
     --pad_to_max_length \
     --sent_sim 1 \
     --doc_sim 1 \
-    --mlm 1
+    --mlm 1 \
+    --feature_regularization 0
 
 

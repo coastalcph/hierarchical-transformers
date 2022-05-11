@@ -378,6 +378,8 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
     pad_to_multiple_of: Optional[int] = None
     return_tensors: str = "pt"
     max_sentence_length: int = 64
+    mask_sentences: bool = False
+    ms_probability: float = 0.25
 
     def __post_init__(self):
         if self.mlm and self.tokenizer.mask_token is None:
@@ -447,6 +449,31 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
 
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
         return inputs, labels
+
+    def torch_mask_sentences(self, inputs: Any, attention_mask: Any) -> Any:
+        """
+        Define masked sentences for masked sentence tasks.
+        """
+        import torch
+
+        sentence_masks = torch.zeros((attention_mask.shape[0], int(len(attention_mask[0])/self.max_sentence_length)), dtype=torch.long)
+
+        for doc_idx, _ in enumerate(attention_mask):
+            # Find padded sentences
+            sentence_mask = [attention_mask[doc_idx][i:i + self.max_sentence_length].sum() != self.tokenizer.pad_token_id
+                             for i in range(0, len(attention_mask[0]), self.max_sentence_length)]
+            sentence_mask = torch.tensor(sentence_mask, dtype=torch.bool)
+            # We sample a few sentences in each sequence (with probability `self.ms_probability`)
+            probability_matrix = torch.full(sentence_mask.shape, self.ms_probability)
+            probability_matrix.masked_fill_(~sentence_mask, value=0.0)
+            masked_indices = torch.bernoulli(probability_matrix).int()
+            if masked_indices.sum() == 0:
+                masked_indices[0] = 1
+            sentence_masks[doc_idx] = masked_indices
+            for sent_idx, mask_id in enumerate(sentence_masks[doc_idx]):
+                inputs[doc_idx][sent_idx * self.max_sentence_length + 1:(sent_idx + 1) * self.max_sentence_length] = self.tokenizer.mask_token_id
+
+        return inputs, sentence_masks
 
     def numpy_call(self, examples: List[Union[List[int], Any, Dict[str, Any]]]) -> Dict[str, Any]:
         import numpy as np
