@@ -212,10 +212,16 @@ class DataTrainingArguments:
             "help": "Whether to add masked sentence representation similarity in pre-training objectives"
         },
     )
-    feature_regularization: bool = field(
+    sentence_regularization: bool = field(
         default=False,
         metadata={
-            "help": "Whether to use feature regularization (variance, covariance) losses"
+            "help": "Whether to use document feature regularization (variance, covariance) losses"
+        },
+    )
+    document_regularization: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use document feature regularization (variance, covariance) losses"
         },
     )
     sentence_masking: bool = field(
@@ -392,7 +398,8 @@ def main():
     config.mlm = data_args.mlm
     config.sent_sim = data_args.sent_sim
     config.doc_sim = data_args.doc_sim
-    config.feature_regularization = data_args.feature_regularization
+    config.sentence_regularization = data_args.sentence_regularization
+    config.document_regularization = data_args.document_regularization
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -422,7 +429,8 @@ def main():
             model = HiTransformerModelForSiamesePreTraining.from_pretrained(
                 model_args.model_name_or_path,
                 detach_predictor=bool(data_args.detach_predictor),
-                feature_regularization=bool(data_args.feature_regularization),
+                document_regularization=bool(data_args.document_regularization),
+                sentence_regularization=bool(data_args.sentence_regularization),
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 cache_dir=model_args.cache_dir,

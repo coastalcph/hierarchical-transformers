@@ -1283,11 +1283,15 @@ class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
     HITRANSFORMER_START_DOCSTRING,
 )
 class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
-    def __init__(self, config, detach_predictor=True, feature_regularization=True):
+    def __init__(self, config,
+                 detach_predictor=True,
+                 document_regularization=True,
+                 sentence_regularization=True):
         super().__init__(config)
 
         self.detach_predictor = detach_predictor
-        self.feature_regularization = feature_regularization
+        self.document_regularization = document_regularization
+        self.sentence_regularization = sentence_regularization
         self.hi_transformer = HiTransformerModel(config)
         if self.config.mlm:
             self.lm_head = HiTransformerLMHead(config)
@@ -1386,8 +1390,12 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
                                                  secondary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size))
             if labels is not None:
                 total_loss += sent_sim_loss
+                if self.sentence_regularization:
+                    total_loss += sent_std_loss + 0.1 * sent_cov_loss
             else:
                 total_loss = sent_sim_loss
+                if self.sentence_regularization:
+                    total_loss += sent_std_loss + 0.1 * sent_cov_loss
 
         doc_sim_loss = None
         doc_std_loss = None
@@ -1398,11 +1406,11 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             doc_std_loss, doc_cov_loss = vic_reg(primary_document_proj_outputs, secondary_document_proj_outputs)
             if labels is not None:
                 total_loss += doc_sim_loss
-                if self.feature_regularization:
+                if self.document_regularization:
                     total_loss += doc_std_loss + 0.1 * doc_cov_loss
             else:
                 total_loss = doc_sim_loss
-                if self.feature_regularization:
+                if self.document_regularization:
                     total_loss += doc_std_loss + 0.1 * doc_cov_loss
 
         if not return_dict:
