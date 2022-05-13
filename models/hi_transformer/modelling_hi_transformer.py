@@ -1419,7 +1419,7 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             pre_doc_std_loss, pre_doc_cov_loss = vic_reg(primary_pooled_outputs, secondary_pooled_outputs)
             # document projections variance, covariance
             doc_std_loss, doc_cov_loss = vic_reg(primary_document_proj_outputs, secondary_document_proj_outputs)
-            total_loss = doc_sim_loss
+            total_loss += doc_sim_loss
             if self.document_regularization == 1:
                 total_loss += doc_std_loss + (0.1 * doc_cov_loss)
             elif self.sentence_regularization == 2:
