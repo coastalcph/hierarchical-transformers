@@ -11,15 +11,15 @@ python language_modelling/run_pretraining_simsiam_stream.py \
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
-    --output_dir data/PLMs/${MODEL_NAME}-vicreg-0.2-full-reg \
+    --output_dir data/PLMs/${MODEL_NAME}-final-noreg \
     --overwrite_output_dir \
-    --logging_steps 500 \
+    --logging_steps 100 \
     --evaluation_strategy steps \
-    --eval_steps 2000 \
+    --eval_steps 4000 \
     --save_strategy steps \
     --save_steps 2000 \
     --save_total_limit 5 \
-    --max_steps 10000 \
+    --max_steps 4000 \
     --learning_rate 1e-5 \
     --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 32 \
@@ -35,6 +35,6 @@ python language_modelling/run_pretraining_simsiam_stream.py \
     --sent_sim 1 \
     --doc_sim 1 \
     --mlm 1 \
-    --sentence_regularization 1 \
-    --document_regularization 1
+    --sentence_regularization 0 \
+    --document_regularization 0
 

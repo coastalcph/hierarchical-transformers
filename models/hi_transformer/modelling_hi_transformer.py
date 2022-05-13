@@ -227,9 +227,13 @@ class HiTransformerForSimPreTrainingOutput(ModelOutput):
     sent_sim_loss: Optional[torch.FloatTensor] = None
     sent_std_loss: Optional[torch.FloatTensor] = None
     sent_cov_loss: Optional[torch.FloatTensor] = None
+    pre_sent_std_loss: Optional[torch.FloatTensor] = None
+    pre_sent_cov_loss: Optional[torch.FloatTensor] = None
     doc_sim_loss: Optional[torch.FloatTensor] = None
     doc_std_loss: Optional[torch.FloatTensor] = None
     doc_cov_loss: Optional[torch.FloatTensor] = None
+    pre_doc_std_loss: Optional[torch.FloatTensor] = None
+    pre_doc_cov_loss: Optional[torch.FloatTensor] = None
     prediction_logits: torch.FloatTensor = None
     document_prediction_logits: torch.FloatTensor = None
     sentence_prediction_logits: torch.FloatTensor = None
@@ -688,11 +692,11 @@ class AttentivePooling(nn.Module):
 class HiTransformerPooler(nn.Module):
     def __init__(self, config, pooling='max'):
         super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.pooling = pooling
         if self.pooling == 'attentive':
             self.attentive_pooling = AttentivePooling(config)
-        self.activation = nn.ReLU()
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.max_sentence_length = config.max_sentence_length
 
     def forward(self, hidden_states):
@@ -701,7 +705,8 @@ class HiTransformerPooler(nn.Module):
         else:
             pooled_output = torch.max(hidden_states, dim=1)[0]
         pooled_output = self.dense(pooled_output)
-        pooled_output = self.activation(pooled_output)
+        pooled_output = self.layer_norm(pooled_output)
+        pooled_output = gelu(pooled_output)
         return pooled_output
 
 
@@ -709,13 +714,14 @@ class HiTransformerSentencizer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.activation = nn.ReLU()
+        self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.max_sentence_length = config.max_sentence_length
 
     def forward(self, hidden_states):
         sentence_repr_hidden_states = hidden_states[:, ::self.max_sentence_length]
         sentence_outputs = self.dense(sentence_repr_hidden_states)
-        sentence_outputs = self.activation(sentence_outputs)
+        sentence_outputs = self.layer_norm(sentence_outputs)
+        sentence_outputs = gelu(sentence_outputs)
         return sentence_outputs
 
 @add_start_docstrings(
@@ -903,13 +909,10 @@ class HiTransformerSiameseHead(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.decoder = nn.Linear(config.hidden_size, config.hidden_size, bias=False)
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size * 2, bias=False)
 
     def forward(self, features):
-        x = self.layer_norm(features)
-        x = self.decoder(x)
-
+        x = self.dense(features)
         return x
 
 
@@ -1382,36 +1385,45 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         sent_sim_loss = None
         sent_std_loss = None
         sent_cov_loss = None
+        pre_sent_std_loss = None
+        pre_sent_cov_loss = None
         if self.config.sent_sim:
+            # sentence projections similarity
             sent_sim_loss = 1 - self.cosine(
                 primary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size),
                 secondary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size)).mean()
-            sent_std_loss, sent_cov_loss = vic_reg(primary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size),
-                                                 secondary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size))
-            if labels is not None:
-                total_loss += sent_sim_loss
-                if self.sentence_regularization:
-                    total_loss += sent_std_loss + 0.1 * sent_cov_loss
-            else:
-                total_loss = sent_sim_loss
-                if self.sentence_regularization:
-                    total_loss += sent_std_loss + 0.1 * sent_cov_loss
+            # sentence outputs variance, covariance
+            pre_sent_std_loss, pre_sent_cov_loss = vic_reg(
+                primary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size),
+                secondary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size))
+            # sentence projections variance, covariance
+            sent_std_loss, sent_cov_loss = vic_reg(
+                primary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size),
+                secondary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size))
+
+            total_loss += sent_sim_loss
+            if self.sentence_regularization == 1:
+                total_loss += sent_std_loss + (0.1 * sent_cov_loss)
+            elif self.sentence_regularization == 2:
+                total_loss += sent_std_loss + (0.1 * sent_cov_loss) + pre_sent_std_loss + (0.1 * pre_sent_cov_loss)
 
         doc_sim_loss = None
         doc_std_loss = None
         doc_cov_loss = None
+        pre_doc_std_loss = None
+        pre_doc_cov_loss = None
         if self.config.doc_sim:
-            doc_sim_loss = 1 - self.cosine(primary_document_proj_outputs,
-                                           secondary_document_proj_outputs).mean()
+            # document projections similarity
+            doc_sim_loss = 1 - self.cosine(primary_document_proj_outputs, secondary_document_proj_outputs).mean()
+            # document outputs variance, covariance
+            pre_doc_std_loss, pre_doc_cov_loss = vic_reg(primary_pooled_outputs, secondary_pooled_outputs)
+            # document projections variance, covariance
             doc_std_loss, doc_cov_loss = vic_reg(primary_document_proj_outputs, secondary_document_proj_outputs)
-            if labels is not None:
-                total_loss += doc_sim_loss
-                if self.document_regularization:
-                    total_loss += doc_std_loss + 0.1 * doc_cov_loss
-            else:
-                total_loss = doc_sim_loss
-                if self.document_regularization:
-                    total_loss += doc_std_loss + 0.1 * doc_cov_loss
+            total_loss = doc_sim_loss
+            if self.document_regularization == 1:
+                total_loss += doc_std_loss + (0.1 * doc_cov_loss)
+            elif self.sentence_regularization == 2:
+                total_loss += doc_std_loss + (0.1 * doc_cov_loss) + pre_doc_std_loss + (0.1 * pre_doc_cov_loss)
 
         if not return_dict:
             output = (primary_prediction_scores,) + primary_outputs[2:]
@@ -1423,9 +1435,13 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             sent_sim_loss=sent_sim_loss,
             sent_std_loss=sent_std_loss,
             sent_cov_loss=sent_cov_loss,
+            pre_sent_std_loss=pre_sent_std_loss,
+            pre_sent_cov_loss=pre_sent_cov_loss,
             doc_sim_loss=doc_sim_loss,
             doc_std_loss=doc_std_loss,
             doc_cov_loss=doc_cov_loss,
+            pre_doc_std_loss=pre_doc_std_loss,
+            pre_doc_cov_loss=pre_doc_cov_loss,
             prediction_logits=primary_prediction_scores,
             hidden_states=primary_outputs.hidden_states,
             attentions=primary_outputs.attentions,
