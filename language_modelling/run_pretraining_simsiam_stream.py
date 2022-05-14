@@ -301,7 +301,7 @@ def main():
             )
 
     # Check pre-training objectives:
-    if not data_args.mlm and not data_args.mslm and not data_args.drp and not data_args.srp:
+    if not data_args.mlm and not data_args.sent_sim and not data_args.doc_sim:
         raise Exception('At least one pre-training objective has to be active!!!')
 
     # Set seed before initializing model.
