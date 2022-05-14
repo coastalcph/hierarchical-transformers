@@ -419,6 +419,11 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
             batch["secondary_input_ids"], batch["secondary_labels"] = \
                 self.torch_mask_tokens(secondary_original_input_ids, special_tokens_mask=special_tokens_mask,
                                        mlm_probability=self.mlm_probability)
+
+        if not self.mlm:
+            batch.pop("labels", None)
+            batch.pop("secondary_labels", None)
+
         return batch
 
     def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None, mlm_probability: Any = 0.2) -> Tuple[Any, Any]:
