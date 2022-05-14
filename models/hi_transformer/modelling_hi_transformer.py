@@ -1401,7 +1401,10 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
                 primary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size),
                 secondary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size))
 
-            total_loss += sent_sim_loss
+            if labels is not None:
+                total_loss += sent_sim_loss
+            else:
+                total_loss = sent_sim_loss
             if self.sentence_regularization == 1:
                 total_loss += sent_std_loss + (0.1 * sent_cov_loss)
             elif self.sentence_regularization == 2:
