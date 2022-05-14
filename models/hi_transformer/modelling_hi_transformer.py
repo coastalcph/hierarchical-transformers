@@ -1350,6 +1350,8 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
         secondary_sequence_output = secondary_outputs[0]
 
         # Masked Language Modeling (MLM)
+        primary_prediction_scores = None
+        secondary_prediction_scores = None
         if self.config.mlm:
             primary_prediction_scores = self.lm_head(primary_sequence_output)
             if secondary_labels is not None:
