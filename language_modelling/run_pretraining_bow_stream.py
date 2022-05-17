@@ -498,7 +498,7 @@ def main():
 
         logger.info(f'The pruned BoW vocabulary has {len(bow_unused_mask) - sum(bow_unused_mask)} sub-words!')
 
-    bow_unused_mask = torch.tensor(bow_unused_mask).bool()
+        bow_unused_mask = torch.tensor(bow_unused_mask).bool()
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
