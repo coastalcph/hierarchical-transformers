@@ -1168,7 +1168,7 @@ class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
             self.pooler = HiTransformerPooler(config, pooling='max')
             self.document_cls = nn.Linear(config.hidden_size, config.vocab_size)
         if self.config.srp:
-            self.sentence_cls = HiTransformerSentenceHead(config)
+            self.sentence_cls = nn.Linear(config.hidden_size, config.vocab_size)
 
         # Initialize weights and apply final processing
         self.post_init()

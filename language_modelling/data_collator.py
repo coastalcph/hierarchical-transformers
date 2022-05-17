@@ -79,6 +79,7 @@ class DataCollatorForBoWPreTraining(DataCollatorMixin):
     pad_to_multiple_of: Optional[int] = None
     return_tensors: str = "pt"
     max_sentence_length: int = 64
+    bow_unused_mask: List[int] = None
 
     def __post_init__(self):
         if self.mlm and self.tokenizer.mask_token is None:
@@ -110,9 +111,11 @@ class DataCollatorForBoWPreTraining(DataCollatorMixin):
         if self.srp and self.sentence_embedder is not None:
             batch["input_ids"], batch["labels"], batch["sentence_labels"] = self.torch_sentence_reprs(batch["input_ids"], batch["labels"], original_input_ids, batch['sentence_masks'])
         elif self.srp:
-            batch["input_ids"], batch["labels"], batch["sentence_labels"], batch['sentence_mask_ids'] = self.torch_bow_sentence_labels(batch["input_ids"], batch["labels"], original_input_ids, batch['sentence_masks'])
+            batch["input_ids"], batch["labels"], batch["sentence_labels"], batch['sentence_mask_ids'] = \
+                self.torch_bow_sentence_labels(batch["input_ids"], batch["labels"], original_input_ids, batch['sentence_masks'])
         if self.drp:
-            batch["document_labels"], batch['document_mask_ids'] = self.torch_bow_document_labels(original_input_ids)
+            batch["document_labels"], batch['document_mask_ids'] = \
+                self.torch_bow_document_labels(original_input_ids)
 
         return batch
 
@@ -120,6 +123,9 @@ class DataCollatorForBoWPreTraining(DataCollatorMixin):
         import torch
         # sample random word indices
         probability_matrix = torch.full((len(self.tokenizer),), 0.01)
+        # mask off unused words
+        if self.bow_unused_mask is not None:
+            probability_matrix.masked_fill_(self.bow_unused_mask, value=0.0)
         sample_ids = torch.bernoulli(probability_matrix).bool()
         # build document labels
         document_labels = torch.zeros((original_input_ids.shape[0], len(self.tokenizer)), dtype=torch.float)
@@ -127,6 +133,9 @@ class DataCollatorForBoWPreTraining(DataCollatorMixin):
             unique_ids = torch.unique(doc_original_input_ids)
             document_labels[doc_idx][unique_ids] = 1
             sample_ids[unique_ids] = True
+        # re-mask off unused words
+        if self.bow_unused_mask is not None:
+            sample_ids[self.bow_unused_mask] = False
 
         return document_labels[:, sample_ids], sample_ids
 
@@ -134,6 +143,9 @@ class DataCollatorForBoWPreTraining(DataCollatorMixin):
         import torch
         # sample random word indices
         probability_matrix = torch.full((len(self.tokenizer),), 0.01)
+        # mask off unused words
+        if self.bow_unused_mask is not None:
+            probability_matrix.masked_fill_(self.bow_unused_mask, value=0.0)
         sample_ids = torch.bernoulli(probability_matrix).bool()
         forced_masked_id = random.choice([1, 2, 3, 4, 5, 6])
         # build sentence labels
@@ -156,6 +168,10 @@ class DataCollatorForBoWPreTraining(DataCollatorMixin):
             # mlm in a single word for safety
             inputs[doc_idx][forced_masked_id] = original_inputs[doc_idx][forced_masked_id]
             labels[doc_idx][forced_masked_id] = original_inputs[doc_idx][forced_masked_id]
+
+        # re-mask off unused words
+        if self.bow_unused_mask is not None:
+            sample_ids[self.bow_unused_mask] = False
 
         return inputs, labels, sentence_labels[:, :, sample_ids], sample_ids
 

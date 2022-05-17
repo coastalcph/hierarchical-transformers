@@ -1,7 +1,7 @@
 export WANDB_PROJECT="hi-transformers"
 export PYTHONPATH=.
 
-MODEL_NAME='hi-transformer-s1-grouped-mlm'
+MODEL_NAME='hi-transformer-p1-grouped-mlm'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
@@ -11,7 +11,7 @@ python language_modelling/run_pretraining_bow_stream.py \
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
-    --output_dir data/PLMs/${MODEL_NAME}+srp-drp \
+    --output_dir data/PLMs/${MODEL_NAME}+srp-drp-hard \
     --overwrite_output_dir \
     --logging_steps 500 \
     --evaluation_strategy steps \
@@ -35,6 +35,8 @@ python language_modelling/run_pretraining_bow_stream.py \
     --pad_to_max_length \
     --srp 1 \
     --drp 1 \
-    --mlm 1
+    --mlm 1 \
+    --hard_bow 1
+
 
 

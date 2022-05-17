@@ -24,12 +24,16 @@ https://huggingface.co/models?filter=fill-mask
 import logging
 import math
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from itertools import chain
 from typing import Optional
 
 import datasets
+import nltk.corpus
+import numpy as np
+import torch
 from datasets import load_dataset, load_metric
 
 import transformers
@@ -215,6 +219,12 @@ class DataTrainingArguments:
         default=False,
         metadata={
             "help": "Whether to add masked sentence representation prediction in pre-training objectives"
+        },
+    )
+    hard_bow: Optional[int] = field(
+        default=False,
+        metadata={
+            "help": "Whether to exclude easy words from BoW pre-training objectives"
         },
     )
     sentence_bert_path: Optional[str] = field(
@@ -473,6 +483,23 @@ def main():
         else:
             raise NotImplementedError('Multi-objective pre-training is not supported for other models')
 
+    bow_unused_mask = None
+    if data_args.hard_bow:
+        vocab_list = [(word, word_id) for word, word_id in tokenizer.vocab.items()]
+        vocab_list = {word_id: word for word, word_id in sorted(vocab_list, key=lambda tup: tup[1])}
+        bow_unused_mask = np.zeros(len(vocab_list), dtype=np.int)
+        stop_words = nltk.corpus.stopwords.words('english')
+        freq_word_ids = set(list(reversed(model.lm_head.bias.argsort().numpy()))[:15000])
+
+        for word_id, word in vocab_list.items():
+            if word.lower() in stop_words or not re.search('[a-z]', word.lower()) or re.search('\d', word) or re.search('(\[|#)', word) \
+                    or len(word) < 3 or word_id not in freq_word_ids:
+                bow_unused_mask[word_id] = 1
+
+        logger.info(f'The pruned BoW vocabulary has {len(bow_unused_mask) - sum(bow_unused_mask)} sub-words!')
+
+    bow_unused_mask = torch.tensor(bow_unused_mask).bool()
+
     # Preprocessing the datasets.
     # First we tokenize all the texts.
     text_column_name = "text"
@@ -633,6 +660,7 @@ def main():
         ms_probability=data_args.ms_probability,
         pad_to_multiple_of=config.max_sentence_length,
         max_sentence_length=config.max_sentence_length,
+        bow_unused_mask=bow_unused_mask
     )
 
     # Initialize our Trainer
