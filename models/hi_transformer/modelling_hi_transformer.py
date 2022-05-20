@@ -1459,7 +1459,7 @@ class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
             output = (primary_prediction_scores,) + primary_outputs[2:]
             return ((total_loss, masked_lm_loss, sent_sim_loss, doc_sim_loss) + output) if total_loss is not None else output
 
-        return HiTransformerModelForVICRegPreTraining(
+        return HiTransformerForVICRegPreTrainingOutput(
             loss=total_loss,
             mlm_loss=masked_lm_loss,
             sent_sim_loss=sent_sim_loss,
@@ -1589,9 +1589,9 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
             batch_size = primary_sent_contrast_logits.shape[0]
 
             # mask-out self-contrast cases
-            logits_mask = 1 - torch.eye(batch_size, batch_size)
-            primary_logits_mask = torch.cat([logits_mask, torch.ones_like(logits_mask)], dim=1)
-            secondary_logits_mask = torch.cat([torch.ones_like(logits_mask), logits_mask], dim=1)
+            logits_mask = 1 - torch.eye(batch_size, batch_size).to(input_ids.device)
+            primary_logits_mask = torch.cat([logits_mask, torch.ones_like(logits_mask).to(input_ids.device)], dim=1).to(input_ids.device)
+            secondary_logits_mask = torch.cat([torch.ones_like(logits_mask).to(input_ids.device), logits_mask], dim=1).to(input_ids.device)
 
             primary_sent_contrast_logits *= primary_logits_mask
             secondary_sent_contrast_logits *= secondary_logits_mask
