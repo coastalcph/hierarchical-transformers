@@ -1346,11 +1346,8 @@ class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
         if self.config.sent_sim or self.config.doc_sim:
             self.sentencizer = HiTransformerSentencizer(config)
             self.cosine = nn.CosineSimilarity(dim=1)
-        if self.config.sent_sim:
-            self.sent_head = HiTransformerSiameseHead(config)
         if self.config.doc_sim:
             self.pooler = HiTransformerPooler(config, pooling='max')
-            self.doc_head = HiTransformerSiameseHead(config)
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -1406,17 +1403,10 @@ class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
             primary_sentence_outputs = self.sentencizer(primary_sequence_output)
             secondary_sentence_outputs = self.sentencizer(secondary_sequence_output)
 
-        # Sentence Representation Prediction (SRP)
-        if self.config.sent_sim:
-            primary_sentence_proj_outputs = self.sent_head(primary_sentence_outputs)
-            secondary_sentence_proj_outputs = self.sent_head(secondary_sentence_outputs)
-
         # Document Representation Prediction (DRP)
         if self.config.doc_sim:
             primary_pooled_outputs = self.pooler(primary_sentence_outputs)
-            primary_document_proj_outputs = self.doc_head(primary_pooled_outputs)
             secondary_pooled_outputs = self.pooler(secondary_sentence_outputs)
-            secondary_document_proj_outputs = self.doc_head(secondary_pooled_outputs)
 
 
         total_loss = None
@@ -1437,25 +1427,19 @@ class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
         if self.config.sent_sim:
             # sentence projections similarity
             sent_sim_loss = 1 - self.cosine(
-                primary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size),
-                secondary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size)).mean()
-            # sentence outputs variance, covariance
-            pre_sent_std_loss, pre_sent_cov_loss = vic_reg(
                 primary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size),
-                secondary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size))
+                secondary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size)).mean()
             # sentence projections variance, covariance
             sent_std_loss, sent_cov_loss = vic_reg(
-                primary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size),
-                secondary_sentence_proj_outputs[sentence_masks].view(-1, self.config.hidden_size))
+                primary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size),
+                secondary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size))
 
             if labels is not None:
                 total_loss += sent_sim_loss
             else:
                 total_loss = sent_sim_loss
-            if self.sentence_regularization == 1:
+            if self.sentence_regularization:
                 total_loss += sent_std_loss + (0.1 * sent_cov_loss)
-            elif self.sentence_regularization == 2:
-                total_loss += sent_std_loss + (0.1 * sent_cov_loss) + pre_sent_std_loss + (0.1 * pre_sent_cov_loss)
 
         doc_sim_loss = None
         doc_std_loss = None
@@ -1464,16 +1448,12 @@ class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
         pre_doc_cov_loss = None
         if self.config.doc_sim:
             # document projections similarity
-            doc_sim_loss = 1 - self.cosine(primary_document_proj_outputs, secondary_document_proj_outputs).mean()
-            # document outputs variance, covariance
-            pre_doc_std_loss, pre_doc_cov_loss = vic_reg(primary_pooled_outputs, secondary_pooled_outputs)
+            doc_sim_loss = 1 - self.cosine(primary_pooled_outputs, secondary_pooled_outputs).mean()
             # document projections variance, covariance
-            doc_std_loss, doc_cov_loss = vic_reg(primary_document_proj_outputs, secondary_document_proj_outputs)
+            doc_std_loss, doc_cov_loss = vic_reg(primary_pooled_outputs, secondary_pooled_outputs)
             total_loss += doc_sim_loss
-            if self.document_regularization == 1:
+            if self.document_regularization:
                 total_loss += doc_std_loss + (0.1 * doc_cov_loss)
-            elif self.sentence_regularization == 2:
-                total_loss += doc_std_loss + (0.1 * doc_cov_loss) + pre_doc_std_loss + (0.1 * pre_doc_cov_loss)
 
         if not return_dict:
             output = (primary_prediction_scores,) + primary_outputs[2:]
