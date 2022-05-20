@@ -46,8 +46,8 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from language_modelling.data_collator import DataCollatorForSiamesePreTraining
-from models.hi_transformer import HiTransformerModelForSiamesePreTraining, HiTransformerTokenizer, HiTransformerConfig
-from language_modelling.trainer_simsiam import Trainer
+from models.hi_transformer import HiTransformerModelForVICRegPreTraining, HiTransformerTokenizer, HiTransformerConfig
+from language_modelling.trainer_vicreg import Trainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.15.0")
@@ -174,12 +174,6 @@ class DataTrainingArguments:
             "If False, tokenizer will use sentence splitting, otherwise fixed chunking."
         },
     )
-    detach_predictor: int = field(
-        default=1,
-        metadata={
-            "help": "Whether to detach predictor from the siamese network."
-        },
-    )
     max_train_samples: Optional[int] = field(
         default=None,
         metadata={
@@ -234,6 +228,9 @@ class DataTrainingArguments:
     )
     sm_probability: float = field(
         default=0.25, metadata={"help": "Ratio of sentences to mask for similarity loss"}
+    )
+    complementary_masking: bool = field(
+        default=False,  metadata={"help": "Whether to use sentence masking"},
     )
 
     def __post_init__(self):
@@ -428,9 +425,8 @@ def main():
 
     if model_args.model_name_or_path:
         if config.model_type == 'hi-transformer':
-            model = HiTransformerModelForSiamesePreTraining.from_pretrained(
+            model = HiTransformerModelForVICRegPreTraining.from_pretrained(
                 model_args.model_name_or_path,
-                detach_predictor=bool(data_args.detach_predictor),
                 document_regularization=data_args.document_regularization,
                 sentence_regularization=data_args.sentence_regularization,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -444,7 +440,7 @@ def main():
     else:
         logger.info("Training new model from scratch")
         if config.model_type == 'hi-transformer':
-            model = HiTransformerModelForSiamesePreTraining.from_config(config)
+            model = HiTransformerModelForVICRegPreTraining.from_config(config)
         else:
             raise NotImplementedError('Multi-objective pre-training is not supported for other models')
 
@@ -587,7 +583,8 @@ def main():
         pad_to_multiple_of=config.max_sentence_length,
         max_sentence_length=config.max_sentence_length,
         sentence_masking=data_args.sentence_masking,
-        ms_probability=data_args.mlm_probability
+        ms_probability=data_args.mlm_probability,
+        complementary_masking=data_args.complementary_masking
     )
 
     # Initialize our Trainer

@@ -36,12 +36,8 @@ import transformers
 from transformers import (
     CONFIG_MAPPING,
     MODEL_FOR_MASKED_LM_MAPPING,
-    AutoConfig,
-    AutoModelForMaskedLM,
     AutoTokenizer,
-    DataCollatorForLanguageModeling,
     HfArgumentParser,
-    Trainer,
     TrainingArguments,
     is_torch_tpu_available,
     set_seed,
@@ -49,8 +45,9 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
-from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerTokenizer, HiTransformerConfig
-from models.longformer import LongformerTokenizer, LongformerForMaskedLM
+from language_modelling.data_collator import DataCollatorForSiamesePreTraining
+from models.hi_transformer import HiTransformerModelForSimCLRPreTraining, HiTransformerTokenizer, HiTransformerConfig
+from language_modelling.trainer_simclr import Trainer
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.15.0")
@@ -157,7 +154,7 @@ class DataTrainingArguments:
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     mlm_probability: float = field(
-        default=0.15, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
+        default=0.20, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"}
     )
     line_by_line: bool = field(
         default=False,
@@ -191,12 +188,49 @@ class DataTrainingArguments:
             "value if set."
         },
     )
-    min_sequence_length: int = field(
+    mlm: Optional[int] = field(
+        default=False,
+        metadata={
+            "help": "Whether to add masked language modelling in pre-training objectives"
+        },
+    )
+    sent_sim: Optional[int] = field(
+        default=False,
+        metadata={
+            "help": "Whether to add document representation similarity in pre-training objectives"
+        },
+    )
+    doc_sim: Optional[int] = field(
+        default=False,
+        metadata={
+            "help": "Whether to add masked sentence representation similarity in pre-training objectives"
+        },
+    )
+    sentence_regularization: int = field(
         default=0,
         metadata={
-            "help": "Will use the token generated when running `transformers-cli login` (necessary to use this script "
-            "with private models)."
+            "help": "Whether to use document feature regularization (variance, covariance) losses."
+                    "0 for no regularization, 1 for projection only, 2 for both."
         },
+    )
+    document_regularization: int = field(
+        default=0,
+        metadata={
+            "help": "Whether to use document feature regularization (variance, covariance) losses."
+                    "0 for no regularization, 1 for projection only, 2 for both."
+        },
+    )
+    sentence_masking: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use sentence masking"
+        },
+    )
+    sm_probability: float = field(
+        default=0.25, metadata={"help": "Ratio of sentences to mask for similarity loss"}
+    )
+    complementary_masking: bool = field(
+        default=False,  metadata={"help": "Whether to use sentence masking"},
     )
 
     def __post_init__(self):
@@ -262,6 +296,10 @@ def main():
                 f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
                 "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
             )
+
+    # Check pre-training objectives:
+    if not data_args.mlm and not data_args.sent_sim and not data_args.doc_sim:
+        raise Exception('At least one pre-training objective has to be active!!!')
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
@@ -329,8 +367,6 @@ def main():
             )
 
     raw_datasets = raw_datasets.with_format("torch")
-    # raw_datasets['train'] = raw_datasets['train'].remove_columns([column for column in raw_datasets.column_names['train'] if column != 'text'])
-    # raw_datasets['validation'] = raw_datasets['validation'].remove_columns([column for column in raw_datasets.column_names['validation'] if column !='text'])
 
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
@@ -349,16 +385,6 @@ def main():
         config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
     elif model_args.model_name_or_path and 'hi-transformer' in model_args.model_name_or_path:
         config = HiTransformerConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
-    elif model_args.config_name:
-        config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
-        config.max_sentence_size = 128
-        config.max_sentence_length = 128
-        config.max_sentences = 8
-    elif model_args.model_name_or_path:
-        config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
-        config.max_sentence_size = 128
-        config.max_sentence_length = 128
-        config.max_sentences = 8
     else:
         config = CONFIG_MAPPING[model_args.model_type]()
         logger.warning("You are instantiating a new config instance from scratch.")
@@ -366,6 +392,13 @@ def main():
             logger.info(f"Overriding config: {model_args.config_overrides}")
             config.update_from_string(model_args.config_overrides)
             logger.info(f"New config: {config}")
+
+    # Add configuration pre-training flags
+    config.mlm = data_args.mlm
+    config.sent_sim = data_args.sent_sim
+    config.doc_sim = data_args.doc_sim
+    config.sentence_regularization = data_args.sentence_regularization
+    config.document_regularization = data_args.document_regularization
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,
@@ -380,8 +413,6 @@ def main():
             tokenizer = HiTransformerTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
         elif model_args.config_name:
             tokenizer = HiTransformerTokenizer.from_pretrained(model_args.config_name, **tokenizer_kwargs)
-    elif config.model_type == 'longformer':
-        tokenizer = LongformerTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
     elif model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
     elif model_args.model_name_or_path:
@@ -394,17 +425,10 @@ def main():
 
     if model_args.model_name_or_path:
         if config.model_type == 'hi-transformer':
-            model = HiTransformerForMaskedLM.from_pretrained(
+            model = HiTransformerModelForSimCLRPreTraining.from_pretrained(
                 model_args.model_name_or_path,
-                from_tf=bool(".ckpt" in model_args.model_name_or_path),
-                config=config,
-                cache_dir=model_args.cache_dir,
-                revision=model_args.model_revision,
-                use_auth_token=True if model_args.use_auth_token else None,
-            )
-        elif config.model_type == 'longformer':
-            model = LongformerForMaskedLM.from_pretrained(
-                model_args.model_name_or_path,
+                document_regularization=data_args.document_regularization,
+                sentence_regularization=data_args.sentence_regularization,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
                 cache_dir=model_args.cache_dir,
@@ -412,22 +436,13 @@ def main():
                 use_auth_token=True if model_args.use_auth_token else None,
             )
         else:
-            model = AutoModelForMaskedLM.from_pretrained(
-                model_args.model_name_or_path,
-                from_tf=bool(".ckpt" in model_args.model_name_or_path),
-                config=config,
-                cache_dir=model_args.cache_dir,
-                revision=model_args.model_revision,
-                use_auth_token=True if model_args.use_auth_token else None,
-            )
+            raise NotImplementedError('Multi-objective pre-training is not supported for other models')
     else:
         logger.info("Training new model from scratch")
         if config.model_type == 'hi-transformer':
-            model = HiTransformerForMaskedLM.from_config(config)
+            model = HiTransformerModelForSimCLRPreTraining.from_config(config)
         else:
-            model = AutoModelForMaskedLM.from_config(config)
-
-    model.resize_token_embeddings(len(tokenizer))
+            raise NotImplementedError('Multi-objective pre-training is not supported for other models')
 
     # Preprocessing the datasets.
     # First we tokenize all the texts.
@@ -453,85 +468,27 @@ def main():
         # When using line_by_line, we just tokenize each nonempty line.
         padding = "max_length" if data_args.pad_to_max_length else False
 
-        if config.model_type in ['hi-transformer', 'longformer']:
-            def tokenize_function(examples):
-                # Remove empty lines
-                examples[text_column_name] = [
-                    line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
-                ]
-                return tokenizer(
-                    examples[text_column_name],
-                    padding=padding,
-                    truncation=True,
-                    max_length=max_seq_length,
-                    greedy_chunking=data_args.greedy_chunking,
-                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                    # receives the `special_tokens_mask`.
-                    return_special_tokens_mask=True,
-                )
-        else:
-            def tokenize_function(examples):
-                # Remove empty lines
-                examples[text_column_name] = [
-                    line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
-                ]
-                return tokenizer(
-                    examples[text_column_name],
-                    padding=padding,
-                    truncation=True,
-                    max_length=max_seq_length,
-                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                    # receives the `special_tokens_mask`.
-                    return_special_tokens_mask=True,
-                )
-
-        with training_args.main_process_first(desc="dataset map tokenization"):
-            tokenized_datasets = raw_datasets.map(
-                tokenize_function,
-                batched=True,
-                remove_columns=["text"],
+        def tokenize_function(examples):
+            # Remove empty lines
+            examples[text_column_name] = [
+                line for line in examples[text_column_name] if len(line) > 0 and not line.isspace()
+            ]
+            return tokenizer(
+                examples[text_column_name],
+                padding=padding,
+                truncation=True,
+                max_length=max_seq_length,
+                greedy_chunking=data_args.greedy_chunking,
+                # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
+                # receives the `special_tokens_mask`.
+                return_special_tokens_mask=True,
             )
-    elif data_args.min_sequence_length:
-        # When using min_sequence_length, we just tokenize each nonempty line.
-        padding = "max_length" if data_args.pad_to_max_length else False
-
-        if config.model_type in ['hi-transformer', 'longformer']:
-            def tokenize_function(examples):
-                # Remove empty lines
-                examples[text_column_name] = [
-                    line for line in examples[text_column_name] if len(line.split()) > data_args.min_sequence_length
-                ]
-                return tokenizer(
-                    examples[text_column_name],
-                    padding=padding,
-                    truncation=True,
-                    max_length=max_seq_length,
-                    greedy_chunking=data_args.greedy_chunking,
-                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                    # receives the `special_tokens_mask`.
-                    return_special_tokens_mask=True,
-                )
-        else:
-            def tokenize_function(examples):
-                # Remove empty lines
-                examples[text_column_name] = [
-                    line for line in examples[text_column_name] if len(line.split()) > data_args.min_sequence_length
-                ]
-                return tokenizer(
-                    examples[text_column_name],
-                    padding=padding,
-                    truncation=True,
-                    max_length=max_seq_length,
-                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                    # receives the `special_tokens_mask`.
-                    return_special_tokens_mask=True,
-                )
 
         with training_args.main_process_first(desc="dataset map tokenization"):
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["text"],
+                remove_columns=["text"] #, 'eurovoc_concepts', 'title', 'celex_id'],
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -617,12 +574,17 @@ def main():
             return metric.compute(predictions=preds, references=labels)
 
     # Data collator
-    # This one will take care of randomly masking the tokens.
-    pad_to_multiple_of_8 = data_args.line_by_line and training_args.fp16 and not data_args.pad_to_max_length
-    data_collator = DataCollatorForLanguageModeling(
+    # This one will take care of pre-training labels
+    data_collator = DataCollatorForSiamesePreTraining(
         tokenizer=tokenizer,
+        mlm=data_args.mlm,
+        similarity=data_args.sent_sim or data_args.doc_sim,
         mlm_probability=data_args.mlm_probability,
         pad_to_multiple_of=config.max_sentence_length,
+        max_sentence_length=config.max_sentence_length,
+        sentence_masking=data_args.sentence_masking,
+        ms_probability=data_args.mlm_probability,
+        complementary_masking=data_args.complementary_masking
     )
 
     # Initialize our Trainer
@@ -650,11 +612,6 @@ def main():
         trainer.save_model()  # Saves the tokenizer too for easy upload
         metrics = train_result.metrics
 
-        #max_train_samples = (
-        #    data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
-        #)
-        #metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
         trainer.save_state()
@@ -665,8 +622,6 @@ def main():
 
         metrics = trainer.evaluate()
 
-        #max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-        #metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         try:
             perplexity = math.exp(metrics["eval_loss"])
         except OverflowError:

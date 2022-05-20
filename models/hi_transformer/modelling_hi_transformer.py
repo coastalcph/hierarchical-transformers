@@ -190,9 +190,9 @@ class HiTransformerForBoWPreTrainingOutput(ModelOutput):
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 @dataclass
-class HiTransformerForSimPreTrainingOutput(ModelOutput):
+class HiTransformerForVICRegPreTrainingOutput(ModelOutput):
     """
-    Output type of [`HiTransformerForPreTraining`].
+    Output type of [`HiTransformerForVICRegPreTraining`].
 
     Args:
         loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
@@ -234,6 +234,53 @@ class HiTransformerForSimPreTrainingOutput(ModelOutput):
     doc_cov_loss: Optional[torch.FloatTensor] = None
     pre_doc_std_loss: Optional[torch.FloatTensor] = None
     pre_doc_cov_loss: Optional[torch.FloatTensor] = None
+    prediction_logits: torch.FloatTensor = None
+    document_prediction_logits: torch.FloatTensor = None
+    sentence_prediction_logits: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+@dataclass
+class HiTransformerForSimCLRPreTrainingOutput(ModelOutput):
+    """
+    Output type of [`HiTransformerForSimCLRPreTraining`].
+
+    Args:
+        loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+            Total loss as the sum of pre-training losses.
+        mlm_loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+        The masked language modeling loss.
+        sent_sim_loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+        The sentence similarity loss.
+        doc_sim_loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+        The document similarity loss.
+        prediction_logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
+            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
+        document_prediction_logits (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
+            Prediction scores of the document prediction head (scores for each vocabulary token before Sigmoid).
+        sentence_prediction_logits (`torch.FloatTensor` of shape `(batch_size, config.hidden_size)`):
+            Prediction scores of the sentence prediction head (scores for each vocabulary token before Sigmoid).
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings + one for the output of each layer) of
+            shape `(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+    """
+
+    loss: Optional[torch.FloatTensor] = None
+    mlm_loss: Optional[torch.FloatTensor] = None
+    sent_contr_loss: Optional[torch.FloatTensor] = None
+    sent_std_loss: Optional[torch.FloatTensor] = None
+    sent_cov_loss: Optional[torch.FloatTensor] = None
+    doc_contr_loss: Optional[torch.FloatTensor] = None
+    doc_std_loss: Optional[torch.FloatTensor] = None
+    doc_cov_loss: Optional[torch.FloatTensor] = None
     prediction_logits: torch.FloatTensor = None
     document_prediction_logits: torch.FloatTensor = None
     sentence_prediction_logits: torch.FloatTensor = None
@@ -1280,19 +1327,17 @@ class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
 
 @add_start_docstrings(
     """
-    Hi-Transformer Model with three heads on top as done during the pretraining: a `masked language modeling` head and a `document
-    representation prediction ` head and a `masked sentence representation prediction ` head.
+    Hi-Transformer Model with three heads on top as done during the pretraining: a `masked language modeling` head and a `sentence
+    projection head` head and a document projection head` head.
     """,
     HITRANSFORMER_START_DOCSTRING,
 )
-class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
+class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
     def __init__(self, config,
-                 detach_predictor=True,
                  document_regularization=True,
                  sentence_regularization=True):
         super().__init__(config)
 
-        self.detach_predictor = detach_predictor
         self.document_regularization = document_regularization
         self.sentence_regularization = sentence_regularization
         self.hi_transformer = HiTransformerModel(config)
@@ -1434,7 +1479,7 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             output = (primary_prediction_scores,) + primary_outputs[2:]
             return ((total_loss, masked_lm_loss, sent_sim_loss, doc_sim_loss) + output) if total_loss is not None else output
 
-        return HiTransformerForSimPreTrainingOutput(
+        return HiTransformerModelForVICRegPreTraining(
             loss=total_loss,
             mlm_loss=masked_lm_loss,
             sent_sim_loss=sent_sim_loss,
@@ -1447,6 +1492,206 @@ class HiTransformerModelForSiamesePreTraining(HiTransformerPreTrainedModel):
             doc_cov_loss=doc_cov_loss,
             pre_doc_std_loss=pre_doc_std_loss,
             pre_doc_cov_loss=pre_doc_cov_loss,
+            prediction_logits=primary_prediction_scores,
+            hidden_states=primary_outputs.hidden_states,
+            attentions=primary_outputs.attentions,
+        )
+
+
+@add_start_docstrings(
+    """
+    Hi-Transformer Model with three heads on top as done during the pretraining: a `masked language modeling` head and a `document
+    representation prediction ` head and a `masked sentence representation prediction ` head.
+    """,
+    HITRANSFORMER_START_DOCSTRING,
+)
+class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
+    def __init__(self, config,
+                 document_regularization=True,
+                 sentence_regularization=True):
+        super().__init__(config)
+
+        self.document_regularization = document_regularization
+        self.sentence_regularization = sentence_regularization
+        self.hi_transformer = HiTransformerModel(config)
+        if self.config.mlm:
+            self.lm_head = HiTransformerLMHead(config)
+        if self.config.sent_sim or self.config.doc_sim:
+            self.sentencizer = HiTransformerSentencizer(config)
+        if self.config.doc_sim:
+            self.pooler = HiTransformerPooler(config, pooling='max')
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    def forward(
+        self,
+        input_ids=None,
+        secondary_input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        labels=None,
+        secondary_labels=None,
+        sentence_masks=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+    ):
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        primary_outputs = self.hi_transformer(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        secondary_outputs = self.hi_transformer(
+            secondary_input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        # Collect sequence output representations
+        primary_sequence_output = primary_outputs[0]
+        secondary_sequence_output = secondary_outputs[0]
+
+        # Masked Language Modeling (MLM)
+        primary_prediction_scores = None
+        secondary_prediction_scores = None
+        if self.config.mlm:
+            primary_prediction_scores = self.lm_head(primary_sequence_output)
+            if secondary_labels is not None:
+                secondary_prediction_scores = self.lm_head(secondary_sequence_output)
+
+        if self.config.sent_sim or self.config.doc_sim:
+            primary_sentence_outputs = self.sentencizer(primary_sequence_output)
+            secondary_sentence_outputs = self.sentencizer(secondary_sequence_output)
+
+        # Document Representation Prediction (DRP)
+        if self.config.doc_sim:
+            primary_pooled_outputs = self.pooler(primary_sentence_outputs)
+            secondary_pooled_outputs = self.pooler(secondary_sentence_outputs)
+
+        total_loss = None
+        masked_lm_loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            masked_lm_loss = loss_fct(primary_prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+            total_loss = masked_lm_loss.clone() / 2
+        if secondary_labels is not None:
+            masked_lm_loss = loss_fct(secondary_prediction_scores.view(-1, self.config.vocab_size), secondary_labels.view(-1))
+            total_loss += masked_lm_loss / 2
+
+        sent_contr_loss = None
+        sent_std_loss = None
+        sent_cov_loss = None
+        if self.config.sent_sim:
+            # sentence contrastive loss
+            loss_fct = CrossEntropyLoss()
+            # sentence queue: (2 x BS X S, H)
+            flatten_primary_sentence_outputs = primary_sentence_outputs.view(-1, self.config.hidden_size)
+            flatten_secondary_sentence_outputs = secondary_sentence_outputs.view(-1, self.config.hidden_size)
+            flatten_sentence_masks = sentence_masks.view(-1)
+            sentence_queue = torch.cat([flatten_primary_sentence_outputs, flatten_secondary_sentence_outputs], dim=0)
+
+            # sentence logits: (BS x S, 2 x BS x S)
+            primary_sent_contrast_logits = torch.matmul(flatten_primary_sentence_outputs, sentence_queue.T)
+            secondary_sent_contrast_logits = torch.matmul(flatten_secondary_sentence_outputs, sentence_queue.T)
+
+            batch_size = primary_sent_contrast_logits.shape[0]
+
+            # mask-out self-contrast cases
+            logits_mask = 1 - torch.eye(batch_size, batch_size)
+            primary_logits_mask = torch.cat([logits_mask, torch.ones_like(logits_mask)], dim=1)
+            secondary_logits_mask = torch.cat([torch.ones_like(logits_mask), logits_mask], dim=1)
+
+            primary_sent_contrast_logits *= primary_logits_mask
+            secondary_sent_contrast_logits *= secondary_logits_mask
+
+            # auto-compute labels
+            primary_sentence_labels = torch.arange(flatten_primary_sentence_outputs.shape[0]).to(input_ids.device)
+            primary_sentence_labels[~flatten_sentence_masks] = -100
+            secondary_sentence_labels = torch.arange(flatten_secondary_sentence_outputs.shape[0]).to(input_ids.device) + \
+                                        (input_ids.shape[0] * primary_sentence_outputs.shape[1])
+            secondary_sentence_labels[~flatten_sentence_masks] = -100
+
+            # compute loss for both branches
+            sentence_const_loss = (loss_fct(primary_sent_contrast_logits, primary_sentence_labels) +
+                                   loss_fct(secondary_sent_contrast_logits, secondary_sentence_labels)) * 0.5
+
+            # sentence outputs variance, covariance
+            sent_std_loss, sent_cov_loss = vic_reg(
+                primary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size),
+                secondary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size))
+            if labels is not None:
+                total_loss += sentence_const_loss
+            else:
+                total_loss = sentence_const_loss
+            if self.sentence_regularization:
+                total_loss += sent_std_loss + (0.1 * sent_std_loss)
+
+        doc_contr_loss = None
+        doc_std_loss = None
+        doc_cov_loss = None
+        if self.config.doc_sim:
+            # sentence contrastive loss
+            loss_fct = CrossEntropyLoss()
+            # sentence queue: (2 x BS, H)
+            document_queue = torch.cat([primary_pooled_outputs, secondary_pooled_outputs], dim=0)
+
+            # sentence logits: (BS, 2 x BS)
+            primary_doc_contrast_logits = torch.matmul(primary_pooled_outputs, document_queue.T)
+            secondary_doc_contrast_logits = torch.matmul(secondary_pooled_outputs, document_queue.T)
+
+            batch_size = primary_doc_contrast_logits.shape[0]
+
+            # mask-out self-contrast cases
+            logits_mask = 1 - torch.eye(batch_size, batch_size)
+            primary_logits_mask = torch.cat([logits_mask, torch.ones_like(logits_mask)], dim=1)
+            secondary_logits_mask = torch.cat([torch.ones_like(logits_mask), logits_mask], dim=1)
+
+            primary_doc_contrast_logits *= primary_logits_mask
+            secondary_doc_contrast_logits *= secondary_logits_mask
+
+            # auto-compute labels
+            primary_doc_labels = torch.arange(primary_pooled_outputs.shape[0]).to(input_ids.device)
+            secondary_doc_labels = torch.arange(secondary_pooled_outputs.shape[0]).to(input_ids.device) + \
+                                        input_ids.shape[0]
+
+            # compute loss for both branches
+            doc_contr_loss = (loss_fct(primary_doc_contrast_logits, primary_doc_labels) +
+                              loss_fct(secondary_doc_contrast_logits, secondary_doc_labels)) * 0.5
+
+            # sentence outputs variance, covariance
+            doc_std_loss, doc_cov_loss = vic_reg(primary_pooled_outputs, secondary_pooled_outputs)
+            if labels is not None:
+                total_loss += doc_contr_loss
+            else:
+                total_loss = doc_contr_loss
+            if self.document_regularization:
+                total_loss += doc_std_loss + (0.1 * doc_cov_loss)
+
+        if not return_dict:
+            output = (primary_prediction_scores,) + primary_outputs[2:]
+            return ((total_loss, masked_lm_loss, sent_contr_loss, doc_contr_loss) + output) if total_loss is not None else output
+
+        return HiTransformerForSimCLRPreTrainingOutput(
+            loss=total_loss,
+            mlm_loss=masked_lm_loss,
+            sent_contr_loss=sent_contr_loss,
+            sent_std_loss=sent_std_loss,
+            sent_cov_loss=sent_cov_loss,
+            doc_contr_loss=doc_contr_loss,
+            doc_std_loss=doc_std_loss,
+            doc_cov_loss=doc_cov_loss,
             prediction_logits=primary_prediction_scores,
             hidden_states=primary_outputs.hidden_states,
             attentions=primary_outputs.attentions,

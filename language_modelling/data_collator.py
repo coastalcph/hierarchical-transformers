@@ -396,6 +396,7 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
     max_sentence_length: int = 64
     sentence_masking: bool = False
     ms_probability: float = 0.25
+    complementary_masking: bool = False
 
     def __post_init__(self):
         if self.mlm and self.tokenizer.mask_token is None:
@@ -422,7 +423,7 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
         if self.mlm or self.similarity:
             batch["input_ids"], batch["labels"] = \
                 self.torch_mask_tokens(original_input_ids, special_tokens_mask=special_tokens_mask,
-                                       mlm_probability=self.mlm_probability)
+                                       mlm_probability=self.mlm_probability, prior_masks=None)
         if self.similarity and self.sentence_masking:
             batch["secondary_input_ids"], batch['sentence_masks'] = \
                 self.torch_mask_sentences(secondary_original_input_ids, batch['attention_mask'])
@@ -434,7 +435,7 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
                 batch['sentence_masks'][idx] = (example[::self.max_sentence_length] != self.tokenizer.pad_token_id).bool()
             batch["secondary_input_ids"], batch["secondary_labels"] = \
                 self.torch_mask_tokens(secondary_original_input_ids, special_tokens_mask=special_tokens_mask,
-                                       mlm_probability=self.mlm_probability)
+                                       mlm_probability=self.mlm_probability, prior_masks=(batch["labels"] != -100))
 
         if not self.mlm:
             batch.pop("labels", None)
@@ -442,7 +443,8 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
 
         return batch
 
-    def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None, mlm_probability: Any = 0.2) -> Tuple[Any, Any]:
+    def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None, mlm_probability: Any = 0.2,
+                          prior_masks: Any = None) -> Tuple[Any, Any]:
         """
         Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
         """
@@ -459,6 +461,8 @@ class DataCollatorForSiamesePreTraining(DataCollatorMixin):
             special_tokens_mask = special_tokens_mask.bool()
 
         probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
+        if self.complementary_masking and prior_masks is not None:
+            probability_matrix.masked_fill_(prior_masks, value=0.0)
         masked_indices = torch.bernoulli(probability_matrix).bool()
         labels[~masked_indices] = -100  # We only compute loss on masked tokens
 
