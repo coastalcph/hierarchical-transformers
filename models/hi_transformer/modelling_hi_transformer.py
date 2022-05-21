@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss, CosineEmbeddingLoss
+from torch.nn.functional import normalize
 
 from transformers.file_utils import (
     add_code_sample_docstrings,
@@ -1584,27 +1585,29 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
 
             # sentence logits: (BS x S, 2 x BS x S)
             primary_sent_contrast_logits = torch.matmul(flatten_primary_sentence_outputs, sentence_queue.T)
+            primary_sent_contrast_logits = normalize(primary_sent_contrast_logits)
             secondary_sent_contrast_logits = torch.matmul(flatten_secondary_sentence_outputs, sentence_queue.T)
+            secondary_sent_contrast_logits = normalize(secondary_sent_contrast_logits)
 
             batch_size = primary_sent_contrast_logits.shape[0]
 
             # mask-out self-contrast cases
-            logits_mask = 1 - torch.eye(batch_size, batch_size).to(input_ids.device)
-            primary_logits_mask = torch.cat([logits_mask, torch.ones_like(logits_mask).to(input_ids.device)], dim=1).to(input_ids.device)
-            secondary_logits_mask = torch.cat([torch.ones_like(logits_mask).to(input_ids.device), logits_mask], dim=1).to(input_ids.device)
+            logits_mask = torch.eye(batch_size, batch_size).to(input_ids.device)
+            primary_logits_mask = torch.cat([logits_mask, torch.zeros_like(logits_mask).to(input_ids.device)], dim=1).to(input_ids.device)
+            secondary_logits_mask = torch.cat([torch.zeros_like(logits_mask).to(input_ids.device), logits_mask], dim=1).to(input_ids.device)
 
-            primary_sent_contrast_logits *= primary_logits_mask
-            secondary_sent_contrast_logits *= secondary_logits_mask
+            primary_sent_contrast_logits += (primary_logits_mask * -1e3)
+            secondary_sent_contrast_logits += (secondary_logits_mask * -1e3)
 
             # auto-compute labels
-            primary_sentence_labels = torch.arange(flatten_primary_sentence_outputs.shape[0]).to(input_ids.device)
-            primary_sentence_labels[~flatten_sentence_masks] = -100
-            secondary_sentence_labels = torch.arange(flatten_secondary_sentence_outputs.shape[0]).to(input_ids.device) + \
+            primary_sentence_labels = torch.arange(flatten_primary_sentence_outputs.shape[0]).to(input_ids.device) + \
                                         (input_ids.shape[0] * primary_sentence_outputs.shape[1])
+            primary_sentence_labels[~flatten_sentence_masks] = -100
+            secondary_sentence_labels = torch.arange(flatten_secondary_sentence_outputs.shape[0]).to(input_ids.device)
             secondary_sentence_labels[~flatten_sentence_masks] = -100
 
             # compute loss for both branches
-            sentence_const_loss = (loss_fct(primary_sent_contrast_logits, primary_sentence_labels) +
+            sent_contr_loss = (loss_fct(primary_sent_contrast_logits, primary_sentence_labels) +
                                    loss_fct(secondary_sent_contrast_logits, secondary_sentence_labels)) * 0.5
 
             # sentence outputs variance, covariance
@@ -1612,9 +1615,9 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
                 primary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size),
                 secondary_sentence_outputs[sentence_masks].view(-1, self.config.hidden_size))
             if labels is not None:
-                total_loss += sentence_const_loss
+                total_loss += sent_contr_loss
             else:
-                total_loss = sentence_const_loss
+                total_loss = sent_contr_loss
             if self.sentence_regularization:
                 total_loss += sent_std_loss + (0.1 * sent_std_loss)
 
@@ -1629,22 +1632,24 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
 
             # sentence logits: (BS, 2 x BS)
             primary_doc_contrast_logits = torch.matmul(primary_pooled_outputs, document_queue.T)
+            primary_doc_contrast_logits = normalize(primary_doc_contrast_logits)
             secondary_doc_contrast_logits = torch.matmul(secondary_pooled_outputs, document_queue.T)
+            secondary_doc_contrast_logits = normalize(secondary_doc_contrast_logits)
 
             batch_size = primary_doc_contrast_logits.shape[0]
 
             # mask-out self-contrast cases
-            logits_mask = 1 - torch.eye(batch_size, batch_size).to(input_ids.device)
-            primary_logits_mask = torch.cat([logits_mask, torch.ones_like(logits_mask).to(input_ids.device)], dim=1).to(input_ids.device)
-            secondary_logits_mask = torch.cat([torch.ones_like(logits_mask).to(input_ids.device), logits_mask], dim=1).to(input_ids.device)
+            logits_mask = torch.eye(batch_size, batch_size).to(input_ids.device)
+            primary_logits_mask = torch.cat([logits_mask, torch.zeros_like(logits_mask).to(input_ids.device)], dim=1).to(input_ids.device)
+            secondary_logits_mask = torch.cat([torch.zeros_like(logits_mask).to(input_ids.device), logits_mask], dim=1).to(input_ids.device)
 
-            primary_doc_contrast_logits *= primary_logits_mask
-            secondary_doc_contrast_logits *= secondary_logits_mask
+            primary_doc_contrast_logits += (primary_logits_mask * -1e3)
+            secondary_doc_contrast_logits += (secondary_logits_mask * -1e3)
 
             # auto-compute labels
-            primary_doc_labels = torch.arange(primary_pooled_outputs.shape[0]).to(input_ids.device)
-            secondary_doc_labels = torch.arange(secondary_pooled_outputs.shape[0]).to(input_ids.device) + \
-                                        input_ids.shape[0]
+            primary_doc_labels = torch.arange(primary_pooled_outputs.shape[0]).to(input_ids.device) + \
+                                 input_ids.shape[0]
+            secondary_doc_labels = torch.arange(secondary_pooled_outputs.shape[0]).to(input_ids.device)
 
             # compute loss for both branches
             doc_contr_loss = (loss_fct(primary_doc_contrast_logits, primary_doc_labels) +
