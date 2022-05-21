@@ -1578,9 +1578,10 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
             # sentence contrastive loss
             loss_fct = CrossEntropyLoss()
             # sentence queue: (2 x BS X S, H)
+            flatten_sentence_masks = sentence_masks.view(-1)
             flatten_primary_sentence_outputs = primary_sentence_outputs.view(-1, self.config.hidden_size)
             flatten_secondary_sentence_outputs = secondary_sentence_outputs.view(-1, self.config.hidden_size)
-            flatten_sentence_masks = sentence_masks.view(-1)
+            # merge sentence queue (sentences from both branches)
             sentence_queue = torch.cat([flatten_primary_sentence_outputs, flatten_secondary_sentence_outputs], dim=0)
 
             # sentence logits: (BS x S, 2 x BS x S)
@@ -1599,11 +1600,14 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
             primary_sent_contrast_logits += (primary_logits_mask * -1e3)
             secondary_sent_contrast_logits += (secondary_logits_mask * -1e3)
 
+            # mask-out logits in padded sentences
+            primary_sent_contrast_logits[:, ~flatten_sentence_masks.repeat(2)] = -1e3
+            primary_sent_contrast_logits[:, ~flatten_sentence_masks.repeat(2)] = -1e3
+
             # auto-compute labels
-            primary_sentence_labels = torch.arange(flatten_primary_sentence_outputs.shape[0]).to(input_ids.device) + \
-                                        (input_ids.shape[0] * primary_sentence_outputs.shape[1])
+            primary_sentence_labels = torch.arange(batch_size).to(input_ids.device) + batch_size
             primary_sentence_labels[~flatten_sentence_masks] = -100
-            secondary_sentence_labels = torch.arange(flatten_secondary_sentence_outputs.shape[0]).to(input_ids.device)
+            secondary_sentence_labels = torch.arange(batch_size).to(input_ids.device)
             secondary_sentence_labels[~flatten_sentence_masks] = -100
 
             # compute loss for both branches
@@ -1619,7 +1623,7 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
             else:
                 total_loss = sent_contr_loss
             if self.sentence_regularization:
-                total_loss += sent_std_loss + (0.1 * sent_std_loss)
+                total_loss += sent_std_loss + (0.1 * sent_cov_loss)
 
         doc_contr_loss = None
         doc_std_loss = None
@@ -1647,9 +1651,8 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
             secondary_doc_contrast_logits += (secondary_logits_mask * -1e3)
 
             # auto-compute labels
-            primary_doc_labels = torch.arange(primary_pooled_outputs.shape[0]).to(input_ids.device) + \
-                                 input_ids.shape[0]
-            secondary_doc_labels = torch.arange(secondary_pooled_outputs.shape[0]).to(input_ids.device)
+            primary_doc_labels = torch.arange(batch_size).to(input_ids.device) + batch_size
+            secondary_doc_labels = torch.arange(batch_size).to(input_ids.device)
 
             # compute loss for both branches
             doc_contr_loss = (loss_fct(primary_doc_contrast_logits, primary_doc_labels) +
