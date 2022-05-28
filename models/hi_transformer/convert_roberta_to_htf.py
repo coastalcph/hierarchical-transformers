@@ -1,6 +1,5 @@
 import argparse
 
-import torch
 import warnings
 from data import DATA_DIR
 from transformers import AutoModelForMaskedLM, AutoTokenizer
@@ -88,14 +87,14 @@ def convert_roberta_to_htf():
     # re-load model
     htf_model = HiTransformerForMaskedLM.from_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-roberta')
     htf_tokenizer = HiTransformerTokenizer.from_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-roberta')
-    print(f'Hi-transformer model with layout {config.layout} is ready to run!')
+    print(f'RoBERTa-based Hi-transformer model with layout {config.layout} is ready to run!')
 
-    input_ids = torch.randint(1, 30000, (2, 1024), dtype=torch.long)
-    input_ids[:, :: 128] = htf_tokenizer.cls_token_id
-    labels = input_ids.clone()
-    attention_mask = torch.ones((2, 1024), dtype=torch.int)
+    # input_ids = torch.randint(1, 30000, (2, 1024), dtype=torch.long)
+    # input_ids[:, :: 128] = htf_tokenizer.cls_token_id
+    # labels = input_ids.clone()
+    # attention_mask = torch.ones((2, 1024), dtype=torch.int)
     # htf_model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
-    roberta_model(input_ids=input_ids[:, :128], attention_mask=attention_mask[:, :128], labels=labels[:, :128])
+    # roberta_model(input_ids=input_ids[:, :128], attention_mask=attention_mask[:, :128], labels=labels[:, :128])
 
 
 if __name__ == '__main__':
