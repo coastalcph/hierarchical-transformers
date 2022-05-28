@@ -433,6 +433,12 @@ def main():
     # First we tokenize all the texts.
     text_column_name = "text"
 
+    if 'wikipedia' in data_args.dataset_name:
+        remove_columns = ['text']
+    elif data_args.dataset_name == 'c4':
+        remove_columns = ['text', 'url', 'timestamp']
+
+
     if data_args.max_seq_length is None:
         max_seq_length = tokenizer.model_max_length
         if max_seq_length > 8192:
@@ -489,7 +495,7 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["text"],
+                remove_columns=remove_columns,
             )
     elif data_args.min_sequence_length:
         # When using min_sequence_length, we just tokenize each nonempty line.
@@ -531,7 +537,7 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["text"],
+                remove_columns=remove_columns,
             )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -546,7 +552,7 @@ def main():
             tokenized_datasets = raw_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["text"],
+                remove_columns=remove_columns,
             )
 
         # Main data processing function that will concatenate all texts from our dataset and generate chunks of
@@ -577,7 +583,7 @@ def main():
             tokenized_datasets = tokenized_datasets.map(
                 group_texts,
                 batched=True,
-                remove_columns=["text"],
+                remove_columns=remove_columns,
             )
 
     if training_args.do_train:
