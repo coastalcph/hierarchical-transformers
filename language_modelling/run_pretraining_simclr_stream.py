@@ -232,6 +232,9 @@ class DataTrainingArguments:
     complementary_masking: bool = field(
         default=False,  metadata={"help": "Whether to use sentence masking"},
     )
+    temperature: float = field(
+        default=0.5, metadata={"help": "Temperature value for SimCLR logit normalization"},
+    )
 
     def __post_init__(self):
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
@@ -399,6 +402,7 @@ def main():
     config.doc_sim = data_args.doc_sim
     config.sentence_regularization = data_args.sentence_regularization
     config.document_regularization = data_args.document_regularization
+    config.temperature = data_args.temperature
 
     tokenizer_kwargs = {
         "cache_dir": model_args.cache_dir,

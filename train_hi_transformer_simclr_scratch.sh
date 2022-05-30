@@ -1,10 +1,11 @@
 export WANDB_PROJECT="hi-transformers"
 export PYTHONPATH=.
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=4,5,6,7
 
 MODEL_NAME='hi-transformer-p1-grouped'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
+TEMPERATURE=0.5
 LAYOUT='p1'
 
 python models/hi_transformer/convert_bert_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
@@ -15,7 +16,7 @@ python language_modelling/run_pretraining_simclr_stream.py \
     --dataset_config_name 20200501.en \
     --do_train \
     --do_eval \
-    --output_dir data/PLMs/${MODEL_NAME}-mlm-simclr-50k \
+    --output_dir data/PLMs/${MODEL_NAME}-mlm-simclr-50k-V2-${TEMPERATURE} \
     --overwrite_output_dir \
     --logging_steps 500 \
     --evaluation_strategy steps \
@@ -39,4 +40,5 @@ python language_modelling/run_pretraining_simclr_stream.py \
     --sent_sim 1 \
     --doc_sim 1 \
     --mlm 1 \
-    --complementary_masking
+    --complementary_masking \
+    --temperature ${TEMPERATURE}

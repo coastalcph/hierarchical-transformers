@@ -1582,13 +1582,13 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
             flatten_primary_sentence_outputs = primary_sentence_outputs.view(-1, self.config.hidden_size)
             flatten_secondary_sentence_outputs = secondary_sentence_outputs.view(-1, self.config.hidden_size)
             # merge sentence queue (sentences from both branches)
+            flatten_primary_sentence_outputs = normalize(flatten_primary_sentence_outputs)
+            flatten_secondary_sentence_outputs = normalize(flatten_secondary_sentence_outputs)
             sentence_queue = torch.cat([flatten_primary_sentence_outputs, flatten_secondary_sentence_outputs], dim=0)
 
             # sentence logits: (BS x S, 2 x BS x S)
-            primary_sent_contrast_logits = torch.matmul(flatten_primary_sentence_outputs, sentence_queue.T)
-            primary_sent_contrast_logits = normalize(primary_sent_contrast_logits)
-            secondary_sent_contrast_logits = torch.matmul(flatten_secondary_sentence_outputs, sentence_queue.T)
-            secondary_sent_contrast_logits = normalize(secondary_sent_contrast_logits)
+            primary_sent_contrast_logits = torch.matmul(flatten_primary_sentence_outputs, sentence_queue.T) / self.config.temperature
+            secondary_sent_contrast_logits = torch.matmul(flatten_secondary_sentence_outputs, sentence_queue.T) / self.config.temperature
 
             batch_size = primary_sent_contrast_logits.shape[0]
 
@@ -1632,13 +1632,13 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
             # sentence contrastive loss
             loss_fct = CrossEntropyLoss()
             # sentence queue: (2 x BS, H)
+            primary_pooled_outputs = normalize(primary_pooled_outputs)
+            secondary_pooled_outputs = normalize(secondary_pooled_outputs)
             document_queue = torch.cat([primary_pooled_outputs, secondary_pooled_outputs], dim=0)
 
             # sentence logits: (BS, 2 x BS)
-            primary_doc_contrast_logits = torch.matmul(primary_pooled_outputs, document_queue.T)
-            primary_doc_contrast_logits = normalize(primary_doc_contrast_logits)
-            secondary_doc_contrast_logits = torch.matmul(secondary_pooled_outputs, document_queue.T)
-            secondary_doc_contrast_logits = normalize(secondary_doc_contrast_logits)
+            primary_doc_contrast_logits = torch.matmul(primary_pooled_outputs, document_queue.T) / self.config.temperature
+            secondary_doc_contrast_logits = torch.matmul(secondary_pooled_outputs, document_queue.T) / self.config.temperature
 
             batch_size = primary_doc_contrast_logits.shape[0]
 
