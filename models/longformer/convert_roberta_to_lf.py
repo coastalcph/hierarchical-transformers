@@ -51,14 +51,13 @@ def convert_roberta_to_htf():
     lf_model = AutoModelForMaskedLM.from_config(lf_config)
 
     # copy embeddings
-    lf_model.longformer.embeddings.position_embeddings.weight.data[0] = torch.zeros((roberta_config.hidden_size,))
-    k = 1
-    step = roberta_config.max_position_embeddings - 1
+    k = 2
+    step = roberta_config.max_position_embeddings - 2
     while k < lf_config.max_position_embeddings - 1:
         if k + step >= lf_config.max_position_embeddings:
-            lf_model.longformer.embeddings.position_embeddings.weight.data[k:] = roberta_model.roberta.embeddings.position_embeddings.weight[1:(roberta_config.max_position_embeddings + 1 - k)]
+            lf_model.longformer.embeddings.position_embeddings.weight.data[k:] = roberta_model.roberta.embeddings.position_embeddings.weight[2:(roberta_config.max_position_embeddings + 2 - k)]
         else:
-            lf_model.longformer.embeddings.position_embeddings.weight.data[k:(k + step)] = roberta_model.roberta.embeddings.position_embeddings.weight[1:]
+            lf_model.longformer.embeddings.position_embeddings.weight.data[k:(k + step)] = roberta_model.roberta.embeddings.position_embeddings.weight[2:]
         k += step
     lf_model.longformer.embeddings.word_embeddings.load_state_dict(roberta_model.roberta.embeddings.word_embeddings.state_dict())
     lf_model.longformer.embeddings.token_type_embeddings.load_state_dict(roberta_model.roberta.embeddings.token_type_embeddings.state_dict())
