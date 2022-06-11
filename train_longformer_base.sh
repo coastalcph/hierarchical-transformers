@@ -31,7 +31,6 @@ python language_modelling/run_mlm_stream.py \
     --weight_decay 0.01 \
     --mlm_probability 0.15 \
     --max_seq_length ${MODEL_MAX_LENGTH} \
-    --line_by_line \
     --min_sequence_length 1024 \
     --pad_to_max_length \
     --max_eval_samples 100000

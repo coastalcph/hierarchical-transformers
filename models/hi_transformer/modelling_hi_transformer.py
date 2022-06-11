@@ -740,11 +740,11 @@ class AttentivePooling(nn.Module):
 class HiTransformerPooler(nn.Module):
     def __init__(self, config, pooling='max'):
         super().__init__()
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.pooling = pooling
         if self.pooling == 'attentive':
             self.attentive_pooling = AttentivePooling(config)
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.activation = nn.Tanh()
         self.max_sentence_length = config.max_sentence_length
 
     def forward(self, hidden_states):
@@ -753,8 +753,7 @@ class HiTransformerPooler(nn.Module):
         else:
             pooled_output = torch.max(hidden_states, dim=1)[0]
         pooled_output = self.dense(pooled_output)
-        pooled_output = self.layer_norm(pooled_output)
-        pooled_output = gelu(pooled_output)
+        pooled_output = self.activation(pooled_output)
         return pooled_output
 
 
@@ -762,14 +761,11 @@ class HiTransformerSentencizer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.max_sentence_length = config.max_sentence_length
 
     def forward(self, hidden_states):
         sentence_repr_hidden_states = hidden_states[:, ::self.max_sentence_length]
         sentence_outputs = self.dense(sentence_repr_hidden_states)
-        sentence_outputs = self.layer_norm(sentence_outputs)
-        sentence_outputs = gelu(sentence_outputs)
         return sentence_outputs
 
 @add_start_docstrings(
@@ -935,8 +931,8 @@ class HiTransformerSentenceHead(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.decoder = nn.Linear(config.hidden_size, config.hidden_size)
-        self.bias = nn.Parameter(torch.zeros(config.hidden_size))
+        self.decoder = nn.Linear(config.hidden_size, config.sentence_embedding_size)
+        self.bias = nn.Parameter(torch.zeros(config.sentence_embedding_size))
         self.decoder.bias = self.bias
 
     def forward(self, features):
@@ -1907,18 +1903,12 @@ class HiTransformerModelForSentenceClassification(HiTransformerPreTrainedModel):
 class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
-    def __init__(self, config, pooling='max'):
+    def __init__(self, config):
         super().__init__(config)
 
-        self.pooling = pooling
         self.hi_transformer = HiTransformerModel(config)
-        classifier_dropout = (
-            config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
-        )
-        self.dropout = nn.Dropout(classifier_dropout)
-        if self.pooling != 'cls':
-            self.sentencizer = HiTransformerSentencizer(config)
-        self.pooler = HiTransformerPooler(config, pooling=pooling)
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.pooler = HiTransformerPooler(config, pooling="max")
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         # Initialize weights and apply final processing
@@ -1973,12 +1963,7 @@ class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        if self.pooling != 'cls':
-            sentence_outputs = self.sentencizer(sequence_output)
-            pooled_output = self.pooler(sentence_outputs)
-        else:
-            pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
-
+        pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
         reshaped_logits = logits.view(-1, num_choices)
