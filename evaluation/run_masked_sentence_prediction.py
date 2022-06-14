@@ -129,7 +129,7 @@ class ModelArguments:
         default=None, metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
     pooling: str = field(
-        default='cls', metadata={"help": "Which pooling method to use (max, cls, attentive)."}
+        default='first', metadata={"help": "Which pooling method to use (first or last token)."}
     )
     cache_dir: Optional[str] = field(
         default=None,
@@ -154,6 +154,7 @@ class ModelArguments:
             "with private models)."
         },
     )
+
 
 def main():
     # See all possible arguments in src/transformers/training_args.py

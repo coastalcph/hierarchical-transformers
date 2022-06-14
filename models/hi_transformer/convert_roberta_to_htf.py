@@ -9,7 +9,7 @@ warnings.filterwarnings("ignore")
 LAYOUTS = {
     'p1': 'S|S|SD|S|S|SD|S|S|SD|S|S|SD',
     'l1': 'S|S|S|S|S|SD|S|SD|S|SD|S|SD',
-    'f12': 'S|S|S|S|S|S|S|S|S|S|S|S'
+    'f12': 'S|S|S|S|S|S|S|S|S|S|S|SD|D|D|D'
 }
 
 
@@ -68,7 +68,7 @@ def convert_roberta_to_htf():
     htf_model.hi_transformer.embeddings.LayerNorm.load_state_dict(roberta_model.roberta.embeddings.LayerNorm.state_dict())
 
     # copy transformer layers
-    for idx in range(NUM_HIDDEN_LAYERS):
+    for idx in range(min(NUM_HIDDEN_LAYERS, roberta_config.num_hidden_layers)):
         if htf_model.config.encoder_layout[str(idx)]['sentence_encoder']:
             htf_model.hi_transformer.encoder.layer[idx].sentence_encoder.load_state_dict(roberta_model.roberta.encoder.layer[idx].state_dict())
         if htf_model.config.encoder_layout[str(idx)]['document_encoder']:

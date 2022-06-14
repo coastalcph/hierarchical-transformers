@@ -3,7 +3,7 @@ import warnings
 
 import torch
 import time
-from transformers import AutoConfig
+from transformers import AutoConfig, AutoModelForMaskedLM
 
 from data import DATA_DIR
 from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerConfig
@@ -12,6 +12,8 @@ from models.longformer import LongformerForMaskedLM
 warnings.filterwarnings("ignore")
 
 LAYOUTS = {
+    'f6': 'S|S|S|S|S|S',
+    'f8': 'S|S|S|S|S|S',
     's1': 'SD|SD|SD|SD|SD|SD',
     's2': 'S|SD|D|S|SD|D|S|SD|D',
     'p1': 'S|SD|S|SD|S|SD|S|SD',
@@ -20,9 +22,8 @@ LAYOUTS = {
     'e2': 'S|SD|D|S|SD|D|S|S|S|S',
     'l1': 'S|S|S|S|S|S|SD|SD|SD',
     'l2': 'S|S|S|S|S|SD|D|S|SD|D',
-    'b1': 'S|S|SD|D|S|SD|D|S|S|S',
-    'b2': 'S|S|SD|SD|SD|S|S|S|S',
-    'f': 'S|S|S|S|S|S|S|S|S|S|S|S',
+    # 'b1': 'S|S|SD|D|S|SD|D|S|S|S',
+    # 'b2': 'S|S|SD|SD|SD|S|S|S|S',
 }
 
 
@@ -71,6 +72,27 @@ def estimate_model_size():
             print(F'MAX SEQ LENGTH: {int(max_sentences * MAX_SENTENCE_LENGTH)}')
             print('-' * 150)
 
+            lf_config = AutoConfig.from_pretrained('google/bert_uncased_L-8_H-256_A-4')
+            lf_config.num_hidden_layers = CONFIG['num_hidden_layers']
+            # Transformer parameters
+            lf_config.hidden_size = CONFIG['hidden_size']
+            lf_config.intermediate_size = CONFIG['intermediate_size']
+            lf_config.num_attention_heads = CONFIG['num_attention_heads']
+            # Vocabulary parameters
+            lf_config.vocab_size = 32000
+            lf_config.type_vocab_size = 2
+            lf_config.model_max_length = int(MAX_SENTENCE_LENGTH * max_sentences)
+            lf_config.max_position_embeddings = int(MAX_SENTENCE_LENGTH * max_sentences) + 2
+            lf_config.cls_token_id = 100
+            # load dummy longformer model
+            htf_model = AutoModelForMaskedLM.from_config(lf_config)
+            model_total_params = sum(p.numel() for p in htf_model.bert.parameters() if p.requires_grad)
+            model_total_params = model_total_params / 1e6
+            memory_use, time_use = test_memory_usage(htf_model, seq_length=lf_config.model_max_length)
+            print(f'RoBERTa model has {model_total_params:.1f}M number of parameters '
+                  f'and {memory_use:.2f}GB peak memory use and {time_use:.3f} batch/second!')
+            print('-' * 150)
+
             lf_config = AutoConfig.from_pretrained('allenai/longformer-base-4096')
             lf_config.num_hidden_layers = CONFIG['num_hidden_layers']
             # Transformer parameters
@@ -109,7 +131,7 @@ def estimate_model_size():
                 htf_config.max_sentences = max_sentences
                 htf_config.max_position_embeddings = MAX_SENTENCE_LENGTH
                 htf_config.model_max_length = int(MAX_SENTENCE_LENGTH * max_sentences)
-                htf_config.num_hidden_layers = NUM_HIDDEN_LAYERS
+                htf_config.num_hidden_layers = len(ENCODER_LAYOUT.keys())
                 # Transformer parameters
                 htf_config.hidden_size = CONFIG['hidden_size']
                 htf_config.intermediate_size = CONFIG['intermediate_size']

@@ -64,6 +64,7 @@ def convert_roberta_to_htf():
     lf_model.longformer.embeddings.LayerNorm.load_state_dict(roberta_model.roberta.embeddings.LayerNorm.state_dict())
 
     # copy transformer layers
+    roberta_model.roberta.encoder.layer = roberta_model.roberta.encoder.layer[:NUM_HIDDEN_LAYERS]
     for i in range(len(roberta_model.roberta.encoder.layer)):
         # generic
         lf_model.longformer.encoder.layer[i].intermediate.dense = copy.deepcopy(
@@ -100,14 +101,14 @@ def convert_roberta_to_htf():
     # lf_model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'])
 
     # save model
-    lf_model.save_pretrained(f'{DATA_DIR}/PLMs/longformer-roberta')
+    lf_model.save_pretrained(f'{DATA_DIR}/PLMs/longformer-roberta-{NUM_HIDDEN_LAYERS}')
 
     # save tokenizer
-    tokenizer.save_pretrained(f'{DATA_DIR}/PLMs/longformer-roberta')
+    tokenizer.save_pretrained(f'{DATA_DIR}/PLMs/longformer-roberta-{NUM_HIDDEN_LAYERS}')
 
     # re-load model
-    lf_model = AutoModelForMaskedLM.from_pretrained(f'{DATA_DIR}/PLMs/longformer-roberta')
-    lf_tokenizer = AutoTokenizer.from_pretrained(f'{DATA_DIR}/PLMs/longformer-roberta')
+    lf_model = AutoModelForMaskedLM.from_pretrained(f'{DATA_DIR}/PLMs/longformer-roberta-{NUM_HIDDEN_LAYERS}')
+    lf_tokenizer = AutoTokenizer.from_pretrained(f'{DATA_DIR}/PLMs/longformer-roberta-{NUM_HIDDEN_LAYERS}')
     # batch = tokenizer(['this is a dog', 'this is a cat'], return_tensors='pt')
     # lf_model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'])
     print(f'RoBERTa-based Longformer model is ready to run!')
