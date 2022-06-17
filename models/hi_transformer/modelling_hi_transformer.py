@@ -1752,8 +1752,10 @@ class HiTransformerForSequenceClassification(HiTransformerPreTrainedModel):
         if self.pooling != 'cls':
             sentence_outputs = self.sentencizer(sequence_output)
             pooled_output = self.pooler(sentence_outputs)
-        else:
+        elif self.pooling == 'cls':
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
+        elif self.pooling == 'last':
+            pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, -128, :], 1))
 
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
@@ -1972,7 +1974,7 @@ class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
         if self.pooling == 'first':
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
         elif self.pooling == 'last':
-            pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
+            pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, -128, :], 1))
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
         reshaped_logits = logits.view(-1, num_choices)

@@ -15,7 +15,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ Finetuning sentence classification models"""
-import json
 import logging
 import os
 import random
@@ -26,7 +25,6 @@ from typing import Optional
 import datasets
 import numpy as np
 from datasets import load_dataset
-from scipy.special import expit
 
 import transformers
 from transformers import (
@@ -46,7 +44,7 @@ from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
     HiTransformerForSequenceClassification
 from models.longformer import LongformerTokenizer, LongformerModelForSequenceClassification
 from language_modelling.data_collator import DataCollatorForDocumentClassification
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, accuracy_score
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.17.0")
@@ -124,7 +122,7 @@ class ModelArguments:
         default=None, metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
     pooling: str = field(
-        default='max', metadata={"help": "Which pooling method to use (max, cls, attentive)."}
+        default='last', metadata={"help": "Which pooling method to use (max, cls, last, attentive)."}
     )
     cache_dir: Optional[str] = field(
         default=None,
@@ -217,7 +215,7 @@ def main():
             split="train",
             data_dir=data_args.dataset_name,
             cache_dir=model_args.cache_dir,
-            use_auth_token='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' if data_args.dataset_config_name == 'mimic' else False
+            use_auth_token='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'
         )
 
     if training_args.do_eval:
@@ -227,7 +225,7 @@ def main():
             split="validation",
             data_dir=data_args.dataset_name,
             cache_dir=model_args.cache_dir,
-            use_auth_token='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' if data_args.dataset_config_name == 'mimic' else False
+            use_auth_token='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'
         )
 
     if training_args.do_predict:
@@ -237,18 +235,12 @@ def main():
             split="test",
             data_dir=data_args.dataset_name,
             cache_dir=model_args.cache_dir,
-            use_auth_token='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' if data_args.dataset_config_name == 'mimic' else False
+            use_auth_token='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'
         )
 
-    num_labels = train_dataset.features['labels'].feature.num_classes
-    label_ids = train_dataset.features['labels'].feature.names
-
-    # with open('eurovoc_descriptors.json') as file:
-    #     eurovoc_descs = json.load(file)
-    # label_names = {idx: eurovoc_descs[label_id]['en'] for idx, label_id in enumerate(label_ids)}
-    #
+    num_labels = train_dataset.features['label'].num_classes
+    label_ids = train_dataset.features['label'].names
     label_names = label_ids
-    label_list = list(range(num_labels))
 
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
@@ -290,7 +282,7 @@ def main():
         )
         config.max_sentence_size = 128
         config.max_sentence_length = 128
-        config.max_sentences = 8
+        config.max_sentences = 32
         tokenizer = LongformerTokenizer.from_pretrained(
             model_args.model_name_or_path,
             do_lower_case=model_args.do_lower_case,
@@ -320,9 +312,16 @@ def main():
     def preprocess_function(examples):
         # Tokenize the texts
         batch = tokenizer(
-            examples["text"] if data_args.dataset_config_name != 'ecthr_b' else ['\n'.join(example) for example in examples['text']],
+            examples["premise"],
             padding=padding,
             max_length=data_args.max_seq_length,
+            truncation=True,
+        )
+
+        batch_hypothesis = tokenizer(
+            examples["hypothesis"],
+            padding=padding,
+            max_length=128,
             truncation=True,
         )
 
@@ -333,7 +332,10 @@ def main():
             pad_to_multiple_of=data_args.max_seq_length,
         )
 
-        batch["label_ids"] = [[1.0 if label in labels else 0.0 for label in label_list] for labels in examples["labels"]]
+        for idx, example_ids in enumerate(batch_hypothesis['input_ids']):
+            batch['input_ids'][idx][-128:] = example_ids[:128]
+            batch['attention_mask'][idx][-128:] = batch_hypothesis['attention_mask'][idx][:128]
+            batch['token_type_ids'][idx][-128:] = [1] * 128
 
         return batch
 
@@ -347,7 +349,7 @@ def main():
                 batched=True,
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on train dataset",
-                remove_columns=['labels']
+                remove_columns=['label']
             )
         # Log a few random samples from the training set:
         for index in random.sample(range(len(train_dataset)), 3):
@@ -363,7 +365,7 @@ def main():
                 batched=True,
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on validation dataset",
-                remove_columns=['labels']
+                remove_columns=['label']
             )
 
     if training_args.do_predict:
@@ -376,16 +378,18 @@ def main():
                 batched=True,
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on prediction dataset",
-                remove_columns=['labels']
+                remove_columns=['label']
             )
 
+    # You can define your custom compute_metrics function. It takes an `EvalPrediction` object (a namedtuple with a
+    # predictions and label_ids field) and has to return a dictionary string to float.
     def compute_metrics(p: EvalPrediction):
         logits = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
-        preds = (expit(logits) > 0.5).astype(int)
-        label_ids = (p.label_ids > 0.5).astype(int)
-        macro_f1 = f1_score(y_true=label_ids, y_pred=preds, average='macro', zero_division=0)
-        micro_f1 = f1_score(y_true=label_ids, y_pred=preds, average='micro', zero_division=0)
-        return {'macro_f1': macro_f1, 'micro_f1': micro_f1}
+        preds = np.argmax(logits, axis=1)
+        macro_f1 = f1_score(y_true=p.label_ids, y_pred=preds, average='macro', zero_division=0)
+        accuracy = accuracy_score(y_true=p.label_ids, y_pred=preds)
+        micro_f1 = f1_score(y_true=p.label_ids, y_pred=preds, average='micro', zero_division=0)
+        return {'macro-f1': macro_f1, 'micro-f1': micro_f1, 'accuracy_score': accuracy}
 
     # Data collator will default to DataCollatorWithPadding, so we change it if we already did the padding.
     if data_args.pad_to_max_length:
