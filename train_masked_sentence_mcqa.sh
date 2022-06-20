@@ -1,9 +1,9 @@
 export WANDB_PROJECT="hi-transformers-eval"
 export PYTHONPATH=.
 
-MODEL_NAME='hi-transformer-p1-grouped-mlm'
-MODEL_MAX_LENGTH=1024
-MAX_SENTENCES=8
+MODEL_NAME='hi-transformer-p1-roberta-mlm'
+MODEL_MAX_LENGTH=4096
+MAX_SENTENCES=32
 
 python evaluation/run_masked_sentence_prediction.py \
     --model_name_or_path data/PLMs/${MODEL_NAME} \
