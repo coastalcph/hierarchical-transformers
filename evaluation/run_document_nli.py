@@ -222,7 +222,7 @@ def main():
             split="train",
             data_dir=data_args.dataset_name,
             cache_dir=model_args.cache_dir,
-            use_auth_token='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'
+            # use_auth_token='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'
         )
 
     if training_args.do_eval:
@@ -232,7 +232,7 @@ def main():
             split="validation",
             data_dir=data_args.dataset_name,
             cache_dir=model_args.cache_dir,
-            use_auth_token='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'
+            # use_auth_token='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'
         )
 
     if training_args.do_predict:
@@ -242,7 +242,7 @@ def main():
             split="test",
             data_dir=data_args.dataset_name,
             cache_dir=model_args.cache_dir,
-            use_auth_token='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'
+            # use_auth_token='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'
         )
 
     num_labels = train_dataset.features['label'].num_classes
@@ -342,7 +342,7 @@ def main():
         for idx, example_ids in enumerate(batch_hypothesis['input_ids']):
             batch['input_ids'][idx][-128:] = example_ids[:128]
             batch['attention_mask'][idx][-128:] = batch_hypothesis['attention_mask'][idx][:128]
-            batch['token_type_ids'][idx][-128:] = [1] * 128
+            # batch['token_type_ids'][idx][-128:] = [1] * 128
 
         return batch
 
