@@ -29,4 +29,5 @@ python evaluation/run_document_classification.py \
     --lr_scheduler_type linear \
     --warmup_ratio 0.05 \
     --max_seq_length ${MODEL_MAX_LENGTH} \
+    --max_sentences ${MAX_SENTENCES} \
     --pad_to_max_length

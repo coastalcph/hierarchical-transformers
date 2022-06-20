@@ -27,5 +27,6 @@ python evaluation/run_masked_sentence_prediction.py \
     --lr_scheduler_type linear \
     --warmup_ratio 0.05 \
     --max_seq_length ${MODEL_MAX_LENGTH} \
+    --max_sentences ${MAX_SENTENCES} \
     --pad_to_max_length \
     --sentence_bert_path all-MiniLM-L6-v2

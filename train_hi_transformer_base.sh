@@ -33,6 +33,7 @@ python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm
     --weight_decay 0.01 \
     --mlm_probability 0.15 \
     --max_seq_length ${MODEL_MAX_LENGTH} \
+    --max_sentences ${MAX_SENTENCES} \
     --min_sequence_length 1024 \
     --pad_to_max_length \
     --max_eval_samples 100000

@@ -73,6 +73,13 @@ class DataTrainingArguments:
             "than this will be truncated, sequences shorter will be padded."
         },
     )
+    max_sentences: int = field(
+        default=32,
+        metadata={
+            "help": "The maximum number of sentences after tokenization. Sequences longer "
+            "than this will be truncated."
+        },
+    )
     overwrite_cache: bool = field(
         default=False, metadata={"help": "Overwrite the cached preprocessed datasets or not."}
     )
@@ -290,7 +297,7 @@ def main():
         )
         config.max_sentence_size = 128
         config.max_sentence_length = 128
-        config.max_sentences = 32
+        config.max_sentences = data_args.max_sentences
         tokenizer = LongformerTokenizer.from_pretrained(
             model_args.model_name_or_path,
             do_lower_case=model_args.do_lower_case,
