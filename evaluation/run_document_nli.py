@@ -344,7 +344,7 @@ def main():
             batch['attention_mask'][idx][-128:] = batch_hypothesis['attention_mask'][idx][:128]
             # batch['token_type_ids'][idx][-128:] = [1] * 128
 
-        batch['labels'] = batch['label']
+        batch['label'] = examples['label']
 
         return batch
 
@@ -358,7 +358,7 @@ def main():
                 batched=True,
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on train dataset",
-                remove_columns=['labels']
+                remove_columns=['label']
             )
         # Log a few random samples from the training set:
         for index in random.sample(range(len(train_dataset)), 3):
@@ -374,7 +374,7 @@ def main():
                 batched=True,
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on validation dataset",
-                remove_columns=['labels']
+                remove_columns=['label']
             )
 
     if training_args.do_predict:
@@ -387,7 +387,7 @@ def main():
                 batched=True,
                 load_from_cache_file=not data_args.overwrite_cache,
                 desc="Running tokenizer on prediction dataset",
-                remove_columns=['labels']
+                remove_columns=['label']
             )
 
     # You can define your custom compute_metrics function. It takes an `EvalPrediction` object (a namedtuple with a
