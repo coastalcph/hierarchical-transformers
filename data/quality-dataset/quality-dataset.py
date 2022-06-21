@@ -118,5 +118,5 @@ class QuALITY(datasets.GeneratorBasedBuilder):
                         'article': data['article'],
                         'question': question['question'],
                         'options': question['options'],
-                        'label': f"choice_{question['gold_label']}" if split != 'test' else 'choice_0'
+                        'label': f"choice_{question['gold_label']}"
                     }

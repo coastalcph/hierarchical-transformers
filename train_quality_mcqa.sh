@@ -13,6 +13,7 @@ python evaluation/run_quality_mcqa.py \
     --dataset_config_name quality \
     --do_train \
     --do_eval \
+    --do_predict \
     --output_dir data/PLMs/${MODEL_NAME}-${POOLING_METHOD}-quality \
     --overwrite_output_dir \
     --evaluation_strategy epoch \
@@ -23,10 +24,10 @@ python evaluation/run_quality_mcqa.py \
     --greater_is_better True \
     --save_total_limit 5 \
     --learning_rate 1e-5 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --gradient_accumulation_steps 2 \
-    --eval_accumulation_steps 2 \
+    --per_device_train_batch_size 2 \
+    --per_device_eval_batch_size 2 \
+    --gradient_accumulation_steps 4 \
+    --eval_accumulation_steps 4 \
     --lr_scheduler_type linear \
     --warmup_ratio 0.05 \
     --max_seq_length ${MODEL_MAX_LENGTH} \
