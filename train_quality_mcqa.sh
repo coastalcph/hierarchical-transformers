@@ -9,7 +9,7 @@ MAX_SENTENCES=32
 python evaluation/run_quality_mcqa.py \
     --model_name_or_path data/PLMs/${MODEL_NAME} \
     --pooling ${POOLING_METHOD} \
-    --dataset_name data/quality \
+    --dataset_name data/quality-dataset \
     --dataset_config_name quality \
     --do_train \
     --do_eval \

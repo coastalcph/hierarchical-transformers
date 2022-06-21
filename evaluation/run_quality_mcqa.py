@@ -365,7 +365,6 @@ def main():
                 batch['attention_mask'][-1][-256:-128] = batch_question['attention_mask'][example_idx][:128]
                 batch['attention_mask'][-1][-128:] = batch_options['attention_mask'][option_idx][:128]
                 batch['label'].append(examples['label'][example_idx]-1)
-            print()
 
         return {k: [v[i: i + 4] for i in range(0, len(v), 4)] for k, v in batch.items()}
 
