@@ -357,8 +357,8 @@ def main():
                 batch['input_ids'][-1][-256:-128] = batch_question['input_ids'][example_idx][:128]
                 batch['input_ids'][-1][-128:] = batch_options['input_ids'][option_idx][:128]
                 if 'longformer' in model_args.model_name_or_path:
-                    batch['input_ids'][-1][-256:] = tokenizer.sep_token_id
-                    batch['input_ids'][-1][-128:] = tokenizer.sep_token_id
+                    batch['input_ids'][-1][-256] = tokenizer.sep_token_id
+                    batch['input_ids'][-1][-128] = tokenizer.sep_token_id
                 batch['attention_mask'].append(copy.deepcopy(batch_articles['attention_mask'][example_idx]))
                 batch['attention_mask'][-1][-256:-128] = batch_question['attention_mask'][example_idx][:128]
                 batch['attention_mask'][-1][-128:] = batch_options['attention_mask'][option_idx][:128]
