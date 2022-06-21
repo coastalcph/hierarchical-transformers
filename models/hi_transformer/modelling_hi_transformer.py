@@ -1749,10 +1749,10 @@ class HiTransformerForSequenceClassification(HiTransformerPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        if self.pooling != 'cls':
+        if self.pooling not in ['first', 'last']:
             sentence_outputs = self.sentencizer(sequence_output)
             pooled_output = self.pooler(sentence_outputs)
-        elif self.pooling == 'cls':
+        elif self.pooling == 'first':
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
         elif self.pooling == 'last':
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, -128, :], 1))

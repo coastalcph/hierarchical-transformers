@@ -9,7 +9,7 @@ MAX_SENTENCES=32
 python evaluation/run_document_nli.py \
     --model_name_or_path data/PLMs/${MODEL_NAME} \
     --pooling ${POOLING_METHOD} \
-    --dataset_name nlpaueb/contract_nli \
+    --dataset_name nlpaueb/contractnli-dataset \
     --dataset_config_name contractnli \
     --do_train \
     --do_eval \

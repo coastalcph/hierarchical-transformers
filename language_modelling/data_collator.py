@@ -633,6 +633,20 @@ class DataCollatorForMultipleChoice:
         #     print('-'*100)
         #     print('-' * 100)
 
+        # Check-up for QUALITY alternatives
+        # for inputs, label in zip(batch['input_ids'], batch['labels']):
+        #     print('-' * 100)
+        #     print('-' * 100)
+        #     print(f'Example: {self.tokenizer.decode(inputs[0][:-256])}')
+        #     print(f'Question: {self.tokenizer.decode(inputs[0][-256:-128])}')
+        #     print('-' * 100)
+        #     for i in range(4):
+        #         print(f'Answer [{i}]: {self.tokenizer.decode(inputs[i][-128:])}')
+        #         print('-' * 100)
+        #     print(f'Label: {label.numpy()}')
+        #     print('-'*100)
+        #     print('-' * 100)
+
         return batch
 
 

@@ -519,7 +519,7 @@ class LongformerModelForSequenceClassification(LongformerPreTrainedModel):
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
-        if self.pooling != 'cls':
+        if self.pooling not in ['first', 'last']:
             self.sentencizer = LongformerSentencizer(config)
         self.pooler = LongformerPooler(config, pooling=pooling)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
@@ -566,11 +566,13 @@ class LongformerModelForSequenceClassification(LongformerPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        if self.pooling != 'cls':
+        if self.pooling not in ['first', 'last']:
             sentence_outputs = self.sentencizer(sequence_output)
             pooled_output = self.pooler(sentence_outputs)
-        else:
+        elif self.pooling == 'first':
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
+        elif self.pooling == 'last':
+            pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, -128, :], 1))
 
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
@@ -622,7 +624,7 @@ class LongformerForMultipleChoice(LongformerPreTrainedModel):
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
-        if self.pooling != 'cls':
+        if self.pooling not in ['first', 'last']:
             self.sentencizer = LongformerSentencizer(config)
         self.pooler = LongformerPooler(config, pooling=pooling)
         self.classifier = nn.Linear(config.hidden_size, 1)
@@ -678,11 +680,10 @@ class LongformerForMultipleChoice(LongformerPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        if self.pooling != 'cls':
-            sentence_outputs = self.sentencizer(sequence_output)
-            pooled_output = self.pooler(sentence_outputs)
-        else:
+        if self.pooling == 'first':
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
+        elif self.pooling == 'last':
+            pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, -128, :], 1))
 
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
