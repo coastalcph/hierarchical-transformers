@@ -344,9 +344,6 @@ def main():
             truncation=True,
         )
 
-        if 'longformer' in model_args.model_name_or_path:
-            batch_question['inputs_ids'] = [[tokenizer.sep_token_id] + input_ids[1:] for input_ids in batch_question['inputs_ids']]
-
         for example_idx, options in enumerate(examples['options']):
             batch_options = tokenizer(
                 options,
@@ -354,13 +351,14 @@ def main():
                 max_length=128,
                 truncation=True,
             )
-            if 'longformer' in model_args.model_name_or_path:
-                batch_options['inputs_ids'] = [[tokenizer.sep_token_id] + input_ids[1:] for input_ids in
-                                                batch_options['inputs_ids']]
+
             for option_idx, _ in enumerate(options):
                 batch['input_ids'].append(copy.deepcopy(batch_articles['input_ids'][example_idx]))
                 batch['input_ids'][-1][-256:-128] = batch_question['input_ids'][example_idx][:128]
                 batch['input_ids'][-1][-128:] = batch_options['input_ids'][option_idx][:128]
+                if 'longformer' in model_args.model_name_or_path:
+                    batch['input_ids'][-1][-256:] = tokenizer.sep_token_id
+                    batch['input_ids'][-1][-128:] = tokenizer.sep_token_id
                 batch['attention_mask'].append(copy.deepcopy(batch_articles['attention_mask'][example_idx]))
                 batch['attention_mask'][-1][-256:-128] = batch_question['attention_mask'][example_idx][:128]
                 batch['attention_mask'][-1][-128:] = batch_options['attention_mask'][option_idx][:128]
