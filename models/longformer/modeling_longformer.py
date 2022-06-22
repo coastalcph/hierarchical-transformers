@@ -429,6 +429,11 @@ class LongformerModelForSentenceClassification(LongformerPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
+    @classmethod
+    def from_config(cls, config):
+        return cls._from_config(config)
+
+
     def forward(
         self,
         input_ids=None,
@@ -527,6 +532,10 @@ class LongformerModelForSequenceClassification(LongformerPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
+    @classmethod
+    def from_config(cls, config):
+        return cls._from_config(config)
+
     def forward(
         self,
         input_ids=None,
@@ -615,7 +624,7 @@ class LongformerModelForSequenceClassification(LongformerPreTrainedModel):
 class LongformerForMultipleChoice(LongformerPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
-    def __init__(self, config, pooling='max'):
+    def __init__(self, config, pooling='last'):
         super().__init__(config)
 
         self.pooling = pooling
@@ -631,6 +640,12 @@ class LongformerForMultipleChoice(LongformerPreTrainedModel):
 
         # Initialize weights and apply final processing
         self.post_init()
+
+
+    @classmethod
+    def from_config(cls, config):
+        return cls._from_config(config)
+
 
     def forward(
         self,
@@ -684,6 +699,8 @@ class LongformerForMultipleChoice(LongformerPreTrainedModel):
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
         elif self.pooling == 'last':
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, -128, :], 1))
+        else:
+            pooled_output = self.pooler(self.sentencizer(sequence_output))
 
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)

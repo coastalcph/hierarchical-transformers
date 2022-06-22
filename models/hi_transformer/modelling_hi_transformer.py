@@ -1905,7 +1905,7 @@ class HiTransformerModelForSentenceClassification(HiTransformerPreTrainedModel):
 class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
-    def __init__(self, config, pooling='first'):
+    def __init__(self, config, pooling='last'):
         super().__init__(config)
 
         self.pooling = pooling
@@ -1975,6 +1975,9 @@ class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
         elif self.pooling == 'last':
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, -128, :], 1))
+        else:
+            pooled_output = self.pooler(self.sentencizer(sequence_output))
+
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
         reshaped_logits = logits.view(-1, num_choices)
