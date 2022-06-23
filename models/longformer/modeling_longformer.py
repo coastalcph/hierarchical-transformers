@@ -646,7 +646,6 @@ class LongformerForMultipleChoice(LongformerPreTrainedModel):
     def from_config(cls, config):
         return cls._from_config(config)
 
-
     def forward(
         self,
         input_ids=None,
