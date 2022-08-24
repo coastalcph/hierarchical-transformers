@@ -310,7 +310,6 @@ def main():
         )
         model = AutoModelForSequenceClassification.from_pretrained(
             model_args.model_name_or_path,
-            pooling=model_args.pooling,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
             cache_dir=model_args.cache_dir,
