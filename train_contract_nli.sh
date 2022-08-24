@@ -7,7 +7,7 @@ MODEL_MAX_LENGTH=4096
 MAX_SENTENCES=32
 
 python evaluation/run_document_nli.py \
-    --model_name_or_path data/PLMs/${MODEL_NAME} \
+    --model_name_or_path ${MODEL_NAME} \
     --pooling ${POOLING_METHOD} \
     --dataset_name nlpaueb/contractnli-dataset \
     --dataset_config_name contractnli \

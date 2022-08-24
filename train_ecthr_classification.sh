@@ -7,7 +7,7 @@ MODEL_MAX_LENGTH=4096
 MAX_SENTENCES=32
 
 python evaluation/run_document_classification.py \
-    --model_name_or_path data/PLMs/${MODEL_NAME} \
+    --model_name_or_path ${MODEL_NAME} \
     --pooling ${POOLING_METHOD} \
     --dataset_name lex_glue \
     --dataset_config_name ecthr_b \
