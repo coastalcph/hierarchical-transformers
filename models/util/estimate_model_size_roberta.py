@@ -56,7 +56,7 @@ def test_memory_usage(model, steps=40, batch_size=2, seq_length=4096,  mode='tes
         else:
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
         end = time.time()
-        total_time = (end - start) / steps
+        total_time = (end - start)
         max_time.append(total_time)
         max_mem.append(torch.cuda.max_memory_allocated() / 1e9)
 

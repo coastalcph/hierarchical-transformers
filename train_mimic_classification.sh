@@ -1,7 +1,7 @@
 export WANDB_PROJECT="hi-transformers-eval"
 export PYTHONPATH=.
 
-MODEL_NAME='hi-transformer-p1-roberta-mlm'
+MODEL_NAME='allenai/longformer-base-4096'
 POOLING_METHOD='max'
 MODEL_MAX_LENGTH=4096
 MAX_SENTENCES=32

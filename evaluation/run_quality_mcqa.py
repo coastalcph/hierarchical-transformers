@@ -33,6 +33,8 @@ from transformers import (
     EvalPrediction,
     HfArgumentParser,
     AutoConfig,
+    AutoTokenizer,
+    AutoModelForMultipleChoice,
     Trainer,
     TrainingArguments,
     EarlyStoppingCallback,
@@ -282,6 +284,36 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
+    elif "allenai/longformer-base-4096" in model_args.model_name_or_path or "google/bigbird-roberta-base" in model_args.model_name_or_path:
+        config = AutoConfig.from_pretrained(
+            model_args.model_name_or_path,
+            num_labels=num_labels,
+            finetuning_task="document-classification",
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+
+        # if "allenai/longformer-base-4096" in model_args.model_name_or_path:
+        #     config.attention_window = [128] * config.num_hidden_layers
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            do_lower_case=model_args.do_lower_case,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast_tokenizer,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        model = AutoModelForMultipleChoice.from_pretrained(
+            model_args.model_name_or_path,
+            pooling=model_args.pooling,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
     else:
         config = AutoConfig.from_pretrained(
             model_args.model_name_or_path,
@@ -356,7 +388,7 @@ def main():
                 batch['input_ids'].append(copy.deepcopy(batch_articles['input_ids'][example_idx]))
                 batch['input_ids'][-1][-256:-128] = batch_question['input_ids'][example_idx][:128]
                 batch['input_ids'][-1][-128:] = batch_options['input_ids'][option_idx][:128]
-                if 'longformer' in model_args.model_name_or_path:
+                if 'longformer' in model_args.model_name_or_path or 'bigbird' in model_args.model_name_or_path:
                     batch['input_ids'][-1][-256] = tokenizer.sep_token_id
                     batch['input_ids'][-1][-128] = tokenizer.sep_token_id
                 batch['attention_mask'].append(copy.deepcopy(batch_articles['attention_mask'][example_idx]))

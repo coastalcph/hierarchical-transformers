@@ -15,7 +15,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ Finetuning sentence classification models"""
-import json
 import logging
 import os
 import random
@@ -31,6 +30,8 @@ from scipy.special import expit
 import transformers
 from transformers import (
     AutoConfig,
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
     DataCollatorWithPadding,
     EvalPrediction,
     HfArgumentParser,
@@ -278,6 +279,36 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
         )
         model = HiTransformerForSequenceClassification.from_pretrained(
+            model_args.model_name_or_path,
+            pooling=model_args.pooling,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+    elif "allenai/longformer-base-4096" in model_args.model_name_or_path or "google/bigbird-roberta-base" in model_args.model_name_or_path:
+        config = AutoConfig.from_pretrained(
+            model_args.model_name_or_path,
+            num_labels=num_labels,
+            finetuning_task="document-classification",
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+
+        # if "allenai/longformer-base-4096" in model_args.model_name_or_path:
+        #     config.attention_window = [128] * config.num_hidden_layers
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            do_lower_case=model_args.do_lower_case,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast_tokenizer,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        model = AutoModelForSequenceClassification.from_pretrained(
             model_args.model_name_or_path,
             pooling=model_args.pooling,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
