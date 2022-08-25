@@ -354,6 +354,8 @@ def main():
     def preprocess_function(examples):
         # Tokenize the texts
         batch = {'input_ids': [], 'attention_mask': [], 'label': []}
+        if 'allenai/longformer' in model_args.model_name_or_path:
+            batch['global_attention_mask'] = []
         batch_articles = tokenizer(
             [re.sub('[\n ]{2,}', '\n', article) for article in examples["article"]],
             padding=padding,
@@ -390,6 +392,11 @@ def main():
                 if 'longformer' in model_args.model_name_or_path or 'bigbird' in model_args.model_name_or_path:
                     batch['input_ids'][-1][-256] = tokenizer.sep_token_id
                     batch['input_ids'][-1][-128] = tokenizer.sep_token_id
+                if 'allenai/longformer' in model_args.model_name_or_path:
+                    batch['global_attention_mask'].append([0] * data_args.max_seq_length)
+                    batch['global_attention_mask'][-1][0] = 1
+                    batch['global_attention_mask'][-1][-256] = 1
+                    batch['global_attention_mask'][-1][-128] = 1
                 batch['attention_mask'].append(copy.deepcopy(batch_articles['attention_mask'][example_idx]))
                 batch['attention_mask'][-1][-256:-128] = batch_question['attention_mask'][example_idx][:128]
                 batch['attention_mask'][-1][-128:] = batch_options['attention_mask'][option_idx][:128]
