@@ -1877,11 +1877,11 @@ class HiTransformerModelForSentenceClassification(HiTransformerPreTrainedModel):
                     loss = loss_fct(logits.view(-1, 1), labels.view(-1))
             elif self.config.problem_type == "single_label_classification":
                 loss_fct = CrossEntropyLoss()
-                mask = labels[:, 0] != -1
+                mask = labels[:, :, 0] != -1
                 loss = loss_fct(logits[mask], labels[mask])
             elif self.config.problem_type == "multi_label_classification":
                 loss_fct = BCEWithLogitsLoss()
-                mask = labels[:, 0] == -1
+                mask = labels[:, :, 0] == -1
                 loss = loss_fct(logits[mask], labels[mask])
 
         if not return_dict:
