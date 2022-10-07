@@ -6,7 +6,7 @@ MODEL_MAX_LENGTH=4096
 MAX_SENTENCES=32
 
 python evaluation/run_sequential_sentence_classification.py \
-    --model_name_or_path ${MODEL_NAME} \
+    --model_name_or_path data/PLMs/${MODEL_NAME} \
     --do_train \
     --do_eval \
     --do_predict \
