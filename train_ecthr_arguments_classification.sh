@@ -1,19 +1,16 @@
 export WANDB_PROJECT="hi-transformers-eval"
 export PYTHONPATH=.
 
-MODEL_NAME='allenai/longformer-base-4096'
+MODEL_NAME='hi-transformer-p1-roberta-mlm'
 MODEL_MAX_LENGTH=4096
 MAX_SENTENCES=32
 
 python evaluation/run_sequential_sentence_classification.py \
     --model_name_or_path ${MODEL_NAME} \
-    --pooling ${POOLING_METHOD} \
-    --dataset_name data/mimic-dataset \
-    --dataset_config_name mimic \
     --do_train \
     --do_eval \
     --do_predict \
-    --output_dir data/PLMs/${MODEL_NAME}-${POOLING_METHOD}-mimic \
+    --output_dir data/PLMs/${MODEL_NAME}-${POOLING_METHOD}-ecthr-args \
     --overwrite_output_dir \
     --evaluation_strategy epoch \
     --save_strategy epoch \
@@ -30,3 +27,23 @@ python evaluation/run_sequential_sentence_classification.py \
     --max_seq_length ${MODEL_MAX_LENGTH} \
     --max_sentences ${MAX_SENTENCES} \
     --pad_to_max_length
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
