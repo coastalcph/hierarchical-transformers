@@ -336,7 +336,8 @@ def main():
     def compute_metrics(p: EvalPrediction):
         # Fix scores
         from multi_label_utils import fix_multi_label_scores
-        y_true, y_pred = fix_multi_label_scores(p.predictions, p.label_ids)
+        y_true, y_pred = fix_multi_label_scores(p.predictions, p.label_ids,
+                                                unpad_sequences=True, flatten_sequences=True)
 
         # Compute scores
         macro_f1 = f1_score(y_true=y_true, y_pred=y_pred, average='macro', zero_division=0)
