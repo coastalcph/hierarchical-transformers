@@ -229,7 +229,6 @@ def main():
         )
         tokenizer = HiTransformerTokenizer.from_pretrained(
             model_args.model_name_or_path,
-            do_lower_case=model_args.do_lower_case,
             cache_dir=model_args.cache_dir,
             use_fast=model_args.use_fast_tokenizer,
             revision=model_args.model_revision,
@@ -254,7 +253,6 @@ def main():
         config.max_sentences = data_args.max_sentences
         tokenizer = LongformerTokenizer.from_pretrained(
             model_args.model_name_or_path,
-            do_lower_case=model_args.do_lower_case,
             cache_dir=model_args.cache_dir,
             use_fast=model_args.use_fast_tokenizer,
             revision=model_args.model_revision,
