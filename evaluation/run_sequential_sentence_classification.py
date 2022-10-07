@@ -401,7 +401,6 @@ def main():
         trainer.save_metrics("predict", metrics)
 
         output_predict_file = os.path.join(training_args.output_dir, "test_predictions.csv")
-        report_predict_file = os.path.join(training_args.output_dir, "test_classification_report.txt")
         if trainer.is_world_process_zero():
             with open(output_predict_file, "w") as writer:
                 try:
