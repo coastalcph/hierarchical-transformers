@@ -92,15 +92,43 @@ class LongformerTokenizer:
 
     def __call__(self, texts, **kwargs):
         greedy_chunking = kwargs.pop('greedy_chunking', None)
-        if greedy_chunking:
-            # fixed uniform chunking
-            batch = self.uniform_chunking(texts, **kwargs)
+        if isinstance(texts[0], list):
+            batch = self.auto_chunking(texts, **kwargs)
         else:
-            # dynamic sentence splitting and grouping
-            batch = self.sentence_splitting(texts, **kwargs)
+            if greedy_chunking:
+                # fixed uniform chunking
+                batch = self.uniform_chunking(texts, **kwargs)
+            else:
+                # dynamic sentence splitting and grouping
+                batch = self.sentence_splitting(texts, **kwargs)
 
         for idx, _ in enumerate(batch['input_ids']):
             batch['input_ids'][idx][0] = self._tokenizer.cls_token_id
+
+        if kwargs['padding']:
+            batch = self.pad(batch,
+                             padding=kwargs['padding'],
+                             max_length=kwargs['max_length'],
+                             pad_to_multiple_of=kwargs['max_length'])
+
+        return batch
+
+    def auto_chunking(self, texts, **kwargs):
+        batch = {}
+        for text_idx, text in enumerate(texts):
+            example_batch = self._tokenizer(text, add_special_tokens=False, **kwargs)
+            for input_key in example_batch:
+                key_inputs_list = []
+                for idx, example in enumerate(example_batch[input_key][:self.config.max_sentences]):
+                    key_inputs_list.append(self.pad_sentence(example, special_id=self.type2id[input_key]))
+                if isinstance(key_inputs_list[0], list):
+                    key_inputs_list = [token for sentence in key_inputs_list for token in sentence]
+                else:
+                    key_inputs_list = torch.stack(key_inputs_list)
+                if input_key in batch:
+                    batch[input_key].append(key_inputs_list)
+                else:
+                    batch[input_key] = [key_inputs_list]
 
         return batch
 

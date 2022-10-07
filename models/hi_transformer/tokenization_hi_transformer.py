@@ -82,14 +82,30 @@ class HiTransformerTokenizer:
     def save_pretrained(self, *args, **kwargs):
         return self._tokenizer.save_pretrained( *args, **kwargs)
 
-    def __call__(self, texts, **kwargs):
+    def __call__(self, text, **kwargs):
         greedy_chunking = kwargs.pop('greedy_chunking', None)
-        if greedy_chunking:
+        text_pair = kwargs.pop('text_pair', None)
+        if isinstance(text[0], list):
+            batch = self.auto_chunking(text, **kwargs)
+        elif greedy_chunking:
             # fixed uniform chunking
-            batch = self.uniform_chunking(texts, **kwargs)
+            batch = self.uniform_chunking(text, **kwargs)
         else:
             # dynamic sentence splitting and grouping
-            batch = self.sentence_splitting(texts, **kwargs)
+            batch = self.sentence_splitting(text, **kwargs)
+
+        if text_pair:
+            batch_b = self._tokenizer(text_pair, add_special_tokens=False,
+                                      padding=False, truncation=False)
+            for idx, sample in enumerate(batch['input_ids']):
+                n_sentences = sum(sample[::self.config.max_sentence_size])
+                for input_key in batch:
+                    batch[input_key][idx][self.config.max_sentence_size * n_sentences:
+                                          self.config.max_sentence_size * (n_sentences + 1)] = \
+                        self.pad_sentence(batch_b[input_key][idx],
+                                          special_id=(self.sep_token_id, self.pad_token_id)
+                                          if input_key == 'input_ids' else self.type2id[input_key])
+
         return batch
 
     def uniform_chunking(self, texts, **kwargs):
@@ -102,6 +118,38 @@ class HiTransformerTokenizer:
                                                chunk_size=self.config.max_sentence_length,
                                                special_id=self.type2id[input_type]))
             batch[input_type] = fixed_batch if isinstance(fixed_batch[0], list) else torch.stack(fixed_batch)
+
+        if kwargs['padding']:
+            batch = self.pad(batch,
+                             padding=kwargs['padding'],
+                             max_length=kwargs['max_length'],
+                             pad_to_multiple_of=kwargs['max_length'])
+
+        return batch
+
+    def auto_chunking(self, texts, **kwargs):
+        batch = {}
+        for text_idx, text in enumerate(texts):
+            example_batch = self._tokenizer(text, add_special_tokens=False, **kwargs)
+            for input_key in example_batch:
+                key_inputs_list = []
+                for idx, example in enumerate(example_batch[input_key][:self.config.max_sentences]):
+                    key_inputs_list.append(self.pad_sentence(example, special_id=self.type2id[input_key]))
+                if isinstance(key_inputs_list[0], list):
+                    key_inputs_list = [token for sentence in key_inputs_list for token in sentence]
+                else:
+                    key_inputs_list = torch.stack(key_inputs_list)
+                if input_key in batch:
+                    batch[input_key].append(key_inputs_list)
+                else:
+                    batch[input_key] = [key_inputs_list]
+
+        if kwargs['padding']:
+            batch = self.pad(batch,
+                             padding=kwargs['padding'],
+                             max_length=kwargs['max_length'],
+                             pad_to_multiple_of=kwargs['max_length'])
+
         return batch
 
     def chunks(self, flat_inputs, chunk_size=128, special_id=0):
@@ -139,6 +187,12 @@ class HiTransformerTokenizer:
             batch[input_type] = [example[input_type] for example in fixed_batch]
             if not isinstance(batch[input_type][0], list):
                 batch[input_type] = torch.stack(batch[input_type])
+
+        if kwargs['padding']:
+            batch = self.pad(batch,
+                             padding=kwargs['padding'],
+                             max_length=kwargs['max_length'],
+                             pad_to_multiple_of=kwargs['max_length'])
 
         return batch
 
