@@ -140,12 +140,6 @@ class ModelArguments:
             "with private models)."
         },
     )
-    pooling_method: str = field(
-        default=None,
-        metadata={
-            "help": "Which pooling method to use (first, max, attentive)."
-        },
-    )
 
 
 def main():
@@ -244,7 +238,6 @@ def main():
         )
         model = HiTransformerModelForSentenceClassification.from_pretrained(
             model_args.model_name_or_path,
-            pooling=model_args.pooling,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
             cache_dir=model_args.cache_dir,
