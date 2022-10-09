@@ -213,6 +213,7 @@ def main():
                                        cache_dir=model_args.cache_dir, use_auth_token='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')
     # Labels
     label_list = list(range(train_dataset.features['labels'].feature.feature.num_classes))
+    label_names = train_dataset.features['labels'].feature.feature.names
     num_labels = len(label_list)
 
     # Load pretrained model and tokenizer
@@ -265,6 +266,8 @@ def main():
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
         )
+
+
 
     # Preprocessing the datasets
     # Padding strategy
@@ -401,6 +404,7 @@ def main():
         trainer.save_metrics("predict", metrics)
 
         output_predict_file = os.path.join(training_args.output_dir, "test_predictions.csv")
+        report_predict_file = os.path.join(training_args.output_dir, "clasisfication_report.txt")
         if trainer.is_world_process_zero():
             with open(output_predict_file, "w") as writer:
                 try:
@@ -414,6 +418,15 @@ def main():
                             writer.write(f"{index}\t{pred_line}\n")
                     except:
                         pass
+                    # Discretize predictions
+                    from multi_label_utils import fix_multi_label_scores
+                    y_true, y_pred = fix_multi_label_scores(predictions, labels,
+                                                            unpad_sequences=True, flatten_sequences=True)
+
+                    with open(report_predict_file, "w") as writer:
+                        writer.write(classification_report(y_true=y_true, y_pred=y_pred,
+                                                           target_names=label_names + ['None'],
+                                                           zero_division=0))
 
     # Clean up checkpoints
     checkpoints = [filepath for filepath in glob.glob(f'{training_args.output_dir}/*/') if '/checkpoint' in filepath]
