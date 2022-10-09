@@ -267,8 +267,6 @@ def main():
             revision=model_args.model_revision,
         )
 
-
-
     # Preprocessing the datasets
     # Padding strategy
     if data_args.pad_to_max_length:
@@ -276,6 +274,12 @@ def main():
     else:
         # We will pad later, dynamically at batch creation, to the max sequence length in each batch
         padding = False
+
+    for document, labels in zip(train_dataset['text'], train_dataset['labels']):
+        for paragraph, par_labels in zip(document, labels):
+            par_labels = [label_names[label] for label in par_labels]
+            if len(par_labels) > 1:
+                print()
 
     def preprocess_function(examples):
         # Tokenize the texts
@@ -404,7 +408,7 @@ def main():
         trainer.save_metrics("predict", metrics)
 
         output_predict_file = os.path.join(training_args.output_dir, "test_predictions.csv")
-        report_predict_file = os.path.join(training_args.output_dir, "clasisfication_report.txt")
+        report_predict_file = os.path.join(training_args.output_dir, "classification_report.txt")
         if trainer.is_world_process_zero():
             with open(output_predict_file, "w") as writer:
                 try:
@@ -418,15 +422,18 @@ def main():
                             writer.write(f"{index}\t{pred_line}\n")
                     except:
                         pass
-                    # Discretize predictions
-                    from multi_label_utils import fix_multi_label_scores
-                    y_true, y_pred = fix_multi_label_scores(predictions, labels,
-                                                            unpad_sequences=True, flatten_sequences=True)
 
-                    with open(report_predict_file, "w") as writer:
-                        writer.write(classification_report(y_true=y_true, y_pred=y_pred,
-                                                           target_names=label_names + ['None'],
-                                                           zero_division=0))
+            # Discretize predictions
+            from multi_label_utils import fix_multi_label_scores
+            y_true, y_pred = fix_multi_label_scores(predictions, labels,
+                                                    unpad_sequences=True, flatten_sequences=True)
+            with open(report_predict_file, "w") as writer:
+                writer.write(classification_report(y_true=y_true, y_pred=y_pred,
+                                                   target_names=label_names + ['None'],
+                                                   zero_division=0))
+            logger.info(classification_report(y_true=y_true, y_pred=y_pred,
+                                                   target_names=label_names + ['None'],
+                                                   zero_division=0)+'\n')
 
     # Clean up checkpoints
     checkpoints = [filepath for filepath in glob.glob(f'{training_args.output_dir}/*/') if '/checkpoint' in filepath]
