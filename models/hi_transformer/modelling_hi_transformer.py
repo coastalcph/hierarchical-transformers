@@ -761,11 +761,13 @@ class HiTransformerSentencizer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.activation = nn.Tanh()
         self.max_sentence_length = config.max_sentence_length
 
     def forward(self, hidden_states):
         sentence_repr_hidden_states = hidden_states[:, ::self.max_sentence_length]
         sentence_outputs = self.dense(sentence_repr_hidden_states)
+        sentence_outputs = self.activation(sentence_outputs)
         return sentence_outputs
 
 @add_start_docstrings(
