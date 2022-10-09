@@ -349,6 +349,8 @@ def main():
         # Compute scores
         macro_f1 = f1_score(y_true=y_true, y_pred=y_pred, average='macro', zero_division=0)
         micro_f1 = f1_score(y_true=y_true, y_pred=y_pred, average='micro', zero_division=0)
+        logger.info(classification_report(y_true=y_true, y_pred=y_pred,
+                                          target_names=label_names + ['None'], zero_division=0)+'\n')
         return {'macro-f1': macro_f1, 'micro-f1': micro_f1}
 
     # Initialize our Trainer
