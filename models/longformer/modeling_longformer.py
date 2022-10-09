@@ -147,11 +147,13 @@ class LongformerSentencizer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.activation = nn.Tanh()
         self.max_sentence_length = config.max_sentence_length
 
     def forward(self, hidden_states):
         sentence_repr_hidden_states = hidden_states[:, ::self.max_sentence_length]
         sentence_outputs = self.dense(sentence_repr_hidden_states)
+        sentence_outputs = self.activation(sentence_outputs)
         return sentence_outputs
 
 
@@ -493,10 +495,12 @@ class LongformerModelForSentenceClassification(LongformerPreTrainedModel):
                     loss = loss_fct(logits.view(-1, 1), labels.view(-1))
             elif self.config.problem_type == "single_label_classification":
                 loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+                mask = labels[:, :, 0] != -1
+                loss = loss_fct(logits[mask], labels[mask])
             elif self.config.problem_type == "multi_label_classification":
                 loss_fct = BCEWithLogitsLoss()
-                loss = loss_fct(logits, labels)
+                mask = labels[:, :, 0] != -1
+                loss = loss_fct(logits[mask], labels[mask])
 
         if not return_dict:
             output = (logits,) + outputs[2:]
@@ -507,6 +511,7 @@ class LongformerModelForSentenceClassification(LongformerPreTrainedModel):
             logits=logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
+            sentence_attentions=outputs.sentence_attentions
         )
 
 
