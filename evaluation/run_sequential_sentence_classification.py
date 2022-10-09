@@ -275,11 +275,11 @@ def main():
         # We will pad later, dynamically at batch creation, to the max sequence length in each batch
         padding = False
 
-    for document, labels in zip(train_dataset['text'], train_dataset['labels']):
-        for paragraph, par_labels in zip(document, labels):
-            par_labels = [label_names[label] for label in par_labels]
-            if len(par_labels) > 1:
-                print()
+    # for document, labels in zip(train_dataset['text'], train_dataset['labels']):
+    #     for paragraph, par_labels in zip(document, labels):
+    #         par_labels = [label_names[label] for label in par_labels]
+    #         if len(par_labels) > 1:
+    #             print()
 
     def preprocess_function(examples):
         # Tokenize the texts
