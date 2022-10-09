@@ -286,7 +286,7 @@ def main():
         label_ids = []
         for idx, labels in enumerate(examples["labels"]):
             par_label_ids = []
-            for par_labels in labels:
+            for par_labels in labels[:tokenizer.config.max_sentences]:
                 par_label_ids.append([1.0 if label in par_labels else 0.0 for label in label_list])
             par_label_ids.extend([[-1.0] * len(label_list)] * (tokenizer.config.max_sentences - len(par_label_ids)))
             label_ids.append(par_label_ids)
