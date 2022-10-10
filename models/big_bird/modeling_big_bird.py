@@ -82,7 +82,7 @@ class BigBirdModelForSentenceClassification(BigBirdPreTrainedModel):
         self.num_labels = config.num_labels
         self.config = config
 
-        self.big_bird = BigBirdModel(config, add_pooling_layer=False)
+        self.bert = BigBirdModel(config, add_pooling_layer=False)
         self.sentencizer = BigBirdSentencizer(config)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
@@ -117,7 +117,7 @@ class BigBirdModelForSentenceClassification(BigBirdPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.big_bird(
+        outputs = self.bert(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
