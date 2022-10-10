@@ -252,6 +252,7 @@ def main():
         config.max_sentence_size = 128
         config.max_sentence_length = 128
         config.max_sentences = data_args.max_sentences
+        config.model_max_length = 4096
         tokenizer = LongformerTokenizer.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=model_args.cache_dir,
