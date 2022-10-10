@@ -269,7 +269,7 @@ def main():
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
         )
-    elif 'big-bird' in model_args.model_name_or_path:
+    elif 'bigbird' in model_args.model_name_or_path:
         config = AutoConfig.from_pretrained(
             model_args.model_name_or_path,
             num_labels=num_labels,
