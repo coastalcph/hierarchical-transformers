@@ -57,7 +57,8 @@ def test_memory_usage(model, steps=40, batch_size=2, seq_length=4096,  mode='tes
             lr_scheduler.step()
             optimizer.zero_grad()
         else:
-            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            with torch.no_grad():
+                outputs = model(input_ids=input_ids, attention_mask=attention_mask)
         end = time.time()
         total_time = (end - start)
         max_time.append(total_time)
