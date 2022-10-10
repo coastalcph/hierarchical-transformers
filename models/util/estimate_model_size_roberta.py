@@ -69,7 +69,7 @@ def test_memory_usage(model, steps=40, batch_size=2, seq_length=4096,  mode='tes
 def estimate_model_size():
     for mode in ['train', 'test']:
         print(F'MODE: {mode.upper()}')
-        for task in ['lm', 'doc_cls', 'sent_cls', 'mc_qa']:
+        for task in ['sent_cls']:
             MAX_SENTENCE_LENGTH = 128
             roberta_config = AutoConfig.from_pretrained('roberta-base')
             print('-' * 150)
@@ -97,6 +97,7 @@ def estimate_model_size():
             lf_config.max_position_embeddings = int(MAX_SENTENCE_LENGTH * MAX_SENTENCES) + 2
             lf_config.attention_window = [128] * roberta_config.num_hidden_layers
             lf_config.cls_token_id = 100
+            lf_config.num_labels = 2
             # load dummy longformer model
             htf_model = TASK_MODEL[task]['longformer'].from_config(lf_config)
             model_total_params = sum(p.numel() for p in htf_model.longformer.parameters() if p.requires_grad)
@@ -129,6 +130,7 @@ def estimate_model_size():
                 # Vocabulary parameters
                 htf_config.vocab_size = roberta_config.vocab_size
                 htf_config.type_vocab_size = 2
+                lf_config.num_labels = 2
                 # load dummy hi-transformer model
                 htf_model = TASK_MODEL[task]['hilm'].from_config(htf_config)
                 model_total_params = sum(p.numel() for p in htf_model.hi_transformer.parameters() if p.requires_grad)

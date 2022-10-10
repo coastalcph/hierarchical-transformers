@@ -495,7 +495,7 @@ class LongformerModelForSentenceClassification(LongformerPreTrainedModel):
                     loss = loss_fct(logits.view(-1, 1), labels.view(-1))
             elif self.config.problem_type == "single_label_classification":
                 loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits, labels)
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
             elif self.config.problem_type == "multi_label_classification":
                 loss_fct = BCEWithLogitsLoss()
                 mask = labels[:, :, 0] != -1
@@ -603,7 +603,7 @@ class LongformerModelForSequenceClassification(LongformerPreTrainedModel):
             if self.config.problem_type == "regression":
                 loss_fct = MSELoss()
                 if self.num_labels == 1:
-                    loss = loss_fct(logits.squeeze(), labels.squeeze())
+                    loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1, self.num_labels))
                 else:
                     loss = loss_fct(logits, labels)
             elif self.config.problem_type == "single_label_classification":
