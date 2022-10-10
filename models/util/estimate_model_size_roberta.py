@@ -8,9 +8,9 @@ import numpy as np
 
 from data import DATA_DIR
 from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerConfig, HiTransformerForSequenceClassification, \
-    HiTransformerForMultipleChoice
-from models.longformer import LongformerForMaskedLM, LongformerModelForSequenceClassification, LongformerForMultipleChoice
-
+    HiTransformerForMultipleChoice, HiTransformerModelForSentenceClassification
+from models.longformer import LongformerForMaskedLM, LongformerModelForSequenceClassification, LongformerForMultipleChoice , \
+    LongformerModelForSentenceClassification
 warnings.filterwarnings("ignore")
 
 LAYOUTS = {
@@ -21,6 +21,7 @@ LAYOUTS = {
 TASK_MODEL = {'lm': {'longformer': LongformerForMaskedLM, 'hilm': HiTransformerForMaskedLM},
               'doc_cls': {'longformer': LongformerModelForSequenceClassification, 'hilm': HiTransformerForSequenceClassification},
               'mc_qa': {'longformer': LongformerForMultipleChoice, 'hilm': HiTransformerForMultipleChoice},
+              'sent_cls': {'longformer': LongformerModelForSentenceClassification, 'hilm': HiTransformerModelForSentenceClassification},
               }
 
 
@@ -37,6 +38,8 @@ def test_memory_usage(model, steps=40, batch_size=2, seq_length=4096,  mode='tes
     if mode == 'train':
         if task_type == 'lm':
             labels = input_ids.clone()
+        elif task_type == 'sent_cls':
+            labels = torch.ones((batch_size, 32), dtype=torch.int).long().to('cuda')
         else:
             labels = torch.ones((batch_size, ), dtype=torch.int).long().to('cuda')
         optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
@@ -66,7 +69,7 @@ def test_memory_usage(model, steps=40, batch_size=2, seq_length=4096,  mode='tes
 def estimate_model_size():
     for mode in ['train', 'test']:
         print(F'MODE: {mode.upper()}')
-        for task in ['lm', 'doc_cls', 'mc_qa']:
+        for task in ['lm', 'doc_cls', 'sent_cls', 'mc_qa']:
             MAX_SENTENCE_LENGTH = 128
             roberta_config = AutoConfig.from_pretrained('roberta-base')
             print('-' * 150)
