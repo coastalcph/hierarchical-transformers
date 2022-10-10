@@ -7,7 +7,7 @@ MODEL_WARMUP_STRATEGY='grouped'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 
-python3 models/hi_transformer/convert_bert_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
+python3 models/hat/convert_bert_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
 
 python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm_stream.py \
     --model_name_or_path data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY} \

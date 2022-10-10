@@ -7,8 +7,8 @@ from transformers import AutoConfig
 
 import numpy as np
 from data import DATA_DIR
-from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerConfig, HiTransformerForSequenceClassification, \
-    HiTransformerForMultipleChoice
+from models.hat import HATForMaskedLM, HATConfig, HATForSequenceClassification, \
+    HATForMultipleChoice
 from models.longformer import LongformerForMaskedLM, LongformerModelForSequenceClassification, LongformerForMultipleChoice
 
 warnings.filterwarnings("ignore")
@@ -29,9 +29,9 @@ LAYOUTS = {
 }
 
 
-TASK_MODEL = {'lm': {'longformer': LongformerForMaskedLM, 'hilm': HiTransformerForMaskedLM},
-              'doc_cls': {'longformer': LongformerModelForSequenceClassification, 'hilm': HiTransformerForSequenceClassification},
-              'mc_qa': {'longformer': LongformerForMultipleChoice, 'hilm': HiTransformerForMultipleChoice},
+TASK_MODEL = {'lm': {'longformer': LongformerForMaskedLM, 'hilm': HATForMaskedLM},
+              'doc_cls': {'longformer': LongformerModelForSequenceClassification, 'hilm': HATForSequenceClassification},
+              'mc_qa': {'longformer': LongformerForMultipleChoice, 'hilm': HATForMultipleChoice},
               }
 
 
@@ -157,7 +157,7 @@ def estimate_model_size():
                                                         "document_encoder": True if 'D' in block_pattern else False}
 
                         # load dummy config and change specifications
-                        htf_config = HiTransformerConfig.from_pretrained(f'{DATA_DIR}/hi-transformer')
+                        htf_config = HATConfig.from_pretrained(f'{DATA_DIR}/hi-transformer')
                         # Text length parameters
                         htf_config.max_sentence_length = MAX_SENTENCE_LENGTH
                         htf_config.max_sentences = max_sentences
@@ -175,7 +175,7 @@ def estimate_model_size():
 
                         # load dummy hi-transformer model
                         htf_model = TASK_MODEL[task]['hilm'].from_config(htf_config)
-                        model_total_params = sum(p.numel() for p in htf_model.hi_transformer.parameters() if p.requires_grad)
+                        model_total_params = sum(p.numel() for p in htf_model.hat.parameters() if p.requires_grad)
                         model_total_params = model_total_params / 1e6
                         memory_use, time_use = test_memory_usage(htf_model, seq_length=int(MAX_SENTENCE_LENGTH * max_sentences), mode=mode, task_type=task)
                         mem_gains = (lf_mem_use / memory_use) - 1

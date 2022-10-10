@@ -8,7 +8,7 @@ MAX_SENTENCES=8
 TEMPERATURE=0.5
 LAYOUT='p1'
 
-python models/hi_transformer/convert_bert_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
+python models/hat/convert_bert_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
 
 python language_modelling/run_pretraining_simclr_stream.py \
     --model_name_or_path data/PLMs/${MODEL_NAME} \

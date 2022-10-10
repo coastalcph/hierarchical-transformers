@@ -7,7 +7,7 @@ MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8
 LAYOUT='p1'
 
-python models/hi_transformer/convert_bert_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
+python models/hat/convert_bert_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
 
 python language_modelling/run_pretraining_vicreg_stream.py \
     --model_name_or_path data/PLMs/${MODEL_NAME} \

@@ -1,7 +1,4 @@
 # coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
-# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -13,7 +10,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""PyTorch Hi-Transformer model."""
+"""PyTorch HAT model."""
 
 import torch
 import torch.utils.checkpoint
@@ -40,20 +37,20 @@ from transformers.modeling_outputs import (
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
 from transformers.models.roberta.modeling_roberta import RobertaAttention, RobertaIntermediate, RobertaOutput
-from models.hi_transformer.configuration_hi_transformer import HiTransformerConfig
 from transformers.activations import gelu
+from transformers import PretrainedConfig
 
 
 logger = logging.get_logger(__name__)
 
-_CHECKPOINT_FOR_DOC = "hi-transformer-base"
-_CONFIG_FOR_DOC = "HiTransformerConfig"
-_TOKENIZER_FOR_DOC = "HiTransformerTokenizer"
+_CHECKPOINT_FOR_DOC = "kiddothe2b/hat-base-4096"
+_CONFIG_FOR_DOC = "HATConfig"
+_TOKENIZER_FOR_DOC = "HATTokenizer"
 
-HITRANSFORMER_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "hi-transformer-base",
-    "hi-transformer-large",
-    # See all Hi-Transformer models at https://huggingface.co/models?filter=hi-transformer
+HAT_PRETRAINED_MODEL_ARCHIVE_LIST = [
+    "kiddothe2b/hat-base-4096",
+    "kiddothe2b/adhoc-hat-base-4096",
+    # See all HAT models at https://huggingface.co/models?filter=hierarchical-transformer
 ]
 
 
@@ -148,9 +145,9 @@ class SequenceRepresentationOutput(ModelOutput):
 
 
 @dataclass
-class HiTransformerForBoWPreTrainingOutput(ModelOutput):
+class HATForBoWPreTrainingOutput(ModelOutput):
     """
-    Output type of [`HiTransformerForPreTraining`].
+    Output type of [`HATForPreTraining`].
 
     Args:
         loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
@@ -191,9 +188,9 @@ class HiTransformerForBoWPreTrainingOutput(ModelOutput):
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 @dataclass
-class HiTransformerForVICRegPreTrainingOutput(ModelOutput):
+class HATForVICRegPreTrainingOutput(ModelOutput):
     """
-    Output type of [`HiTransformerForVICRegPreTraining`].
+    Output type of [`HATForVICRegPreTraining`].
 
     Args:
         loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
@@ -242,9 +239,9 @@ class HiTransformerForVICRegPreTrainingOutput(ModelOutput):
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 @dataclass
-class HiTransformerForSimCLRPreTrainingOutput(ModelOutput):
+class HATForSimCLRPreTrainingOutput(ModelOutput):
     """
-    Output type of [`HiTransformerForSimCLRPreTraining`].
+    Output type of [`HATForSimCLRPreTraining`].
 
     Args:
         loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
@@ -322,7 +319,118 @@ class SentenceClassifierOutput(ModelOutput):
     sentence_attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
-class HiTransformerEmbeddings(nn.Module):
+class HATConfig(PretrainedConfig):
+    r"""
+    This is the configuration class to store the configuration of a :class:`~transformers.HAT`.
+    It is used to instantiate a HAT model according to the specified arguments,
+    defining the model architecture. Instantiating a configuration with the defaults will yield a similar configuration
+    to that of the HAT `kiddothe2b/hat-base-4096 <https://huggingface.co/kiddothe2b/hat-base-4096>`__ architecture.
+
+    Configuration objects inherit from :class:`~transformers.PretrainedConfig` and can be used to control the model
+    outputs. Read the documentation from :class:`~transformers.PretrainedConfig` for more information.
+
+
+    Args:
+        vocab_size (:obj:`int`, `optional`, defaults to 30522):
+            Vocabulary size of the BERT model. Defines the number of different tokens that can be represented by the
+            :obj:`inputs_ids` passed when calling :class:`~transformers.BertModel` or
+            :class:`~transformers.TFBertModel`.
+        max_sentences (:obj:`int`, `optional`, defaults to 64):
+            The maximum number of sentences that this model might ever be used with.
+        max_sentence_size (:obj:`int`, `optional`, defaults to 128):
+            The maximum sentence length that this model might ever be used with.
+        model_max_length (:obj:`int`, `optional`, defaults to 8192):
+            The maximum  sequence length (max_sentences * max_sentence_size) that this model might ever be used with
+        encoder_layout (:obj:`Dict`):
+            The sentence/document encoder layout.
+        hidden_size (:obj:`int`, `optional`, defaults to 768):
+            Dimensionality of the encoder layers and the pooler layer.
+        num_hidden_layers (:obj:`int`, `optional`, defaults to 12):
+            Number of hidden layers in the Transformer encoder.
+        num_attention_heads (:obj:`int`, `optional`, defaults to 12):
+            Number of attention heads for each attention layer in the Transformer encoder.
+        intermediate_size (:obj:`int`, `optional`, defaults to 3072):
+            Dimensionality of the "intermediate" (often named feed-forward) layer in the Transformer encoder.
+        hidden_act (:obj:`str` or :obj:`Callable`, `optional`, defaults to :obj:`"gelu"`):
+            The non-linear activation function (function or string) in the encoder and pooler. If string,
+            :obj:`"gelu"`, :obj:`"relu"`, :obj:`"silu"` and :obj:`"gelu_new"` are supported.
+        hidden_dropout_prob (:obj:`float`, `optional`, defaults to 0.1):
+            The dropout probability for all fully connected layers in the embeddings, encoder, and pooler.
+        attention_probs_dropout_prob (:obj:`float`, `optional`, defaults to 0.1):
+            The dropout ratio for the attention probabilities.
+        max_position_embeddings (:obj:`int`, `optional`, defaults to 512):
+            The maximum sequence length that this model might ever be used with. Typically set this to something large
+            just in case (e.g., 512 or 1024 or 2048).
+        type_vocab_size (:obj:`int`, `optional`, defaults to 2):
+            The vocabulary size of the :obj:`token_type_ids` passed when calling :class:`~transformers.BertModel` or
+            :class:`~transformers.TFBertModel`.
+        initializer_range (:obj:`float`, `optional`, defaults to 0.02):
+            The standard deviation of the truncated_normal_initializer for initializing all weight matrices.
+        layer_norm_eps (:obj:`float`, `optional`, defaults to 1e-12):
+            The epsilon used by the layer normalization layers.
+        position_embedding_type (:obj:`str`, `optional`, defaults to :obj:`"absolute"`):
+            Type of position embedding. Choose one of :obj:`"absolute"`, :obj:`"relative_key"`,
+            :obj:`"relative_key_query"`. For positional embeddings use :obj:`"absolute"`. For more information on
+            :obj:`"relative_key"`, please refer to `Self-Attention with Relative Position Representations (Shaw et al.)
+            <https://arxiv.org/abs/1803.02155>`__. For more information on :obj:`"relative_key_query"`, please refer to
+            `Method 4` in `Improve Transformer Models with Better Relative Position Embeddings (Huang et al.)
+            <https://arxiv.org/abs/2009.13658>`__.
+        use_cache (:obj:`bool`, `optional`, defaults to :obj:`True`):
+            Whether or not the model should return the last key/values attentions (not used by all models). Only
+            relevant if ``config.is_decoder=True``.
+        classifier_dropout (:obj:`float`, `optional`):
+            The dropout ratio for the classification head.
+    """
+    model_type = "hierarchical-transformer"
+
+    def __init__(
+        self,
+        vocab_size=30522,
+        hidden_size=768,
+        max_sentences=64,
+        max_sentence_size=128,
+        model_max_length=8192,
+        num_hidden_layers=12,
+        num_attention_heads=12,
+        intermediate_size=3072,
+        hidden_act="gelu",
+        hidden_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.1,
+        max_position_embeddings=512,
+        type_vocab_size=2,
+        initializer_range=0.02,
+        layer_norm_eps=1e-12,
+        pad_token_id=0,
+        position_embedding_type="absolute",
+        encoder_layout=None,
+        use_cache=True,
+        classifier_dropout=None,
+        **kwargs
+    ):
+        super().__init__(pad_token_id=pad_token_id, **kwargs)
+
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        self.max_sentences = max_sentences
+        self.max_sentence_size = max_sentence_size
+        self.model_max_length = model_max_length
+        self.encoder_layout = encoder_layout
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
+        self.hidden_act = hidden_act
+        self.intermediate_size = intermediate_size
+        self.hidden_dropout_prob = hidden_dropout_prob
+        self.attention_probs_dropout_prob = attention_probs_dropout_prob
+        self.max_position_embeddings = max_position_embeddings
+        self.type_vocab_size = type_vocab_size
+        self.initializer_range = initializer_range
+        self.layer_norm_eps = layer_norm_eps
+        self.position_embedding_type = position_embedding_type
+        self.use_cache = use_cache
+        self.classifier_dropout = classifier_dropout
+
+
+class HATEmbeddings(nn.Module):
     """
     Same as BertEmbeddings with a tiny tweak for positional embeddings indexing.
     """
@@ -412,7 +520,7 @@ class HiTransformerEmbeddings(nn.Module):
         return position_ids.unsqueeze(0).expand(input_shape)
 
 
-class HiTransformerLayer(nn.Module):
+class HATLayer(nn.Module):
     def __init__(self, config, use_sentence_encoder=True, use_document_encoder=True):
         super().__init__()
         self.max_sentence_length = config.max_sentence_length
@@ -512,11 +620,11 @@ class TransformerLayer(nn.Module):
         return outputs
 
 
-class HiTransformerEncoder(nn.Module):
+class HATEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.layer = nn.ModuleList([HiTransformerLayer(config,
+        self.layer = nn.ModuleList([HATLayer(config,
                                                        use_sentence_encoder=self.config.encoder_layout[str(idx)]['sentence_encoder'],
                                                        use_document_encoder=self.config.encoder_layout[str(idx)]['document_encoder'])
                                     for idx in range(config.num_hidden_layers)])
@@ -612,14 +720,14 @@ class HiTransformerEncoder(nn.Module):
         return
 
 
-class HiTransformerPreTrainedModel(PreTrainedModel):
+class HATPreTrainedModel(PreTrainedModel):
     """
     An abstract class to handle weights initialization and a simple interface for downloading and loading pretrained
     models.
     """
 
-    config_class = HiTransformerConfig
-    base_model_prefix = "hi_transformer"
+    config_class = HATConfig
+    base_model_prefix = "hat"
     supports_gradient_checkpointing = True
 
     # Copied from transformers.models.bert.modeling_bert.BertPreTrainedModel._init_weights
@@ -640,7 +748,7 @@ class HiTransformerPreTrainedModel(PreTrainedModel):
             module.weight.data.fill_(1.0)
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, HiTransformerEncoder):
+        if isinstance(module, HATEncoder):
             module.gradient_checkpointing = value
 
     def update_keys_to_ignore(self, config, del_keys_to_ignore):
@@ -657,7 +765,7 @@ class HiTransformerPreTrainedModel(PreTrainedModel):
         return cls._from_config(config)
 
 
-HITRANSFORMER_START_DOCSTRING = r"""
+HAT_START_DOCSTRING = r"""
 
     This model inherits from [`PreTrainedModel`]. Check the superclass documentation for the generic methods the
     library implements for all its model (such as downloading or saving, resizing the input embeddings, pruning heads
@@ -668,17 +776,17 @@ HITRANSFORMER_START_DOCSTRING = r"""
     and behavior.
 
     Parameters:
-        config ([`HiTransformerConfig`]): Model configuration class with all the parameters of the
+        config ([`HATConfig`]): Model configuration class with all the parameters of the
             model. Initializing with a config file does not load the weights associated with the model, only the
             configuration. Check out the [`~PreTrainedModel.from_pretrained`] method to load the model weights.
 """
 
-HITRANSFORMER_INPUTS_DOCSTRING = r"""
+HAT_INPUTS_DOCSTRING = r"""
     Args:
         input_ids (`torch.LongTensor` of shape `({0})`):
             Indices of input sequence tokens in the vocabulary.
 
-            Indices can be obtained using [`HiTransformerTokenizer`]. See [`PreTrainedTokenizer.encode`] and
+            Indices can be obtained using [`HATTokenizer`]. See [`PreTrainedTokenizer.encode`] and
             [`PreTrainedTokenizer.__call__`] for details.
 
             [What are input IDs?](../glossary#input-ids)
@@ -737,7 +845,7 @@ class AttentivePooling(nn.Module):
         return torch.sum(attention_weights_normalized.unsqueeze(-1) * inputs, 1)
 
 
-class HiTransformerPooler(nn.Module):
+class HATPooler(nn.Module):
     def __init__(self, config, pooling='max'):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
@@ -757,7 +865,7 @@ class HiTransformerPooler(nn.Module):
         return pooled_output
 
 
-class HiTransformerSentencizer(nn.Module):
+class HATSentencizer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
@@ -771,10 +879,10 @@ class HiTransformerSentencizer(nn.Module):
         return sentence_outputs
 
 @add_start_docstrings(
-    "The bare Hi-Transformer Model transformer outputting raw hidden-states without any specific head on top.",
-    HITRANSFORMER_START_DOCSTRING,
+    "The bare HAT Model transformer outputting raw hidden-states without any specific head on top.",
+    HAT_START_DOCSTRING,
 )
-class HiTransformerModel(HiTransformerPreTrainedModel):
+class HATModel(HATPreTrainedModel):
     """
 
     The model can behave as an encoder (with only self-attention) as well as a decoder, in which case a layer of
@@ -792,13 +900,13 @@ class HiTransformerModel(HiTransformerPreTrainedModel):
 
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
-    # Copied from transformers.models.bert.modeling_bert.BertModel.__init__ with Bert->Hi-Transformer
+    # Copied from transformers.models.bert.modeling_bert.BertModel.__init__ with Bert->HAT
     def __init__(self, config):
         super().__init__(config)
         self.config = config
 
-        self.embeddings = HiTransformerEmbeddings(config)
-        self.encoder = HiTransformerEncoder(config)
+        self.embeddings = HATEmbeddings(config)
+        self.encoder = HATEncoder(config)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -817,7 +925,7 @@ class HiTransformerModel(HiTransformerPreTrainedModel):
         for layer, heads in heads_to_prune.items():
             self.encoder.layer[layer].attention.prune_heads(heads)
 
-    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_start_docstrings_to_model_forward(HAT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -900,8 +1008,8 @@ class HiTransformerModel(HiTransformerPreTrainedModel):
         )
 
 
-class HiTransformerLMHead(nn.Module):
-    """Hi-Transformer Head for masked language modeling."""
+class HATLMHead(nn.Module):
+    """HAT Head for masked language modeling."""
 
     def __init__(self, config):
         super().__init__()
@@ -927,8 +1035,8 @@ class HiTransformerLMHead(nn.Module):
         self.bias = self.decoder.bias
 
 
-class HiTransformerSentenceHead(nn.Module):
-    """Hi-Transformer Head for masked language modeling."""
+class HATSentenceHead(nn.Module):
+    """HAT Head for masked language modeling."""
 
     def __init__(self, config):
         super().__init__()
@@ -950,8 +1058,8 @@ class HiTransformerSentenceHead(nn.Module):
         self.bias = self.decoder.bias
 
 
-class HiTransformerSiameseHead(nn.Module):
-    """Hi-Transformer Head for masked language modeling."""
+class HATSiameseHead(nn.Module):
+    """HAT Head for masked language modeling."""
 
     def __init__(self, config):
         super().__init__()
@@ -962,16 +1070,16 @@ class HiTransformerSiameseHead(nn.Module):
         return x
 
 
-@add_start_docstrings("""Hi-Transformer Model with a `language modeling` head on top.""", HITRANSFORMER_START_DOCSTRING)
-class HiTransformerForMaskedLM(HiTransformerPreTrainedModel):
+@add_start_docstrings("""HAT Model with a `language modeling` head on top.""", HAT_START_DOCSTRING)
+class HATForMaskedLM(HATPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
 
     def __init__(self, config):
         super().__init__(config)
 
-        self.hi_transformer = HiTransformerModel(config)
-        self.lm_head = HiTransformerLMHead(config)
+        self.hat = HATModel(config)
+        self.lm_head = HATLMHead(config)
 
         # The LM head weights require special treatment only when they are tied with the word embeddings
         self.update_keys_to_ignore(config, ["lm_head.decoder.weight"])
@@ -985,7 +1093,7 @@ class HiTransformerForMaskedLM(HiTransformerPreTrainedModel):
     def set_output_embeddings(self, new_embeddings):
         self.lm_head.decoder = new_embeddings
 
-    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_start_docstrings_to_model_forward(HAT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1015,7 +1123,7 @@ class HiTransformerForMaskedLM(HiTransformerPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hi_transformer(
+        outputs = self.hat(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1045,7 +1153,7 @@ class HiTransformerForMaskedLM(HiTransformerPreTrainedModel):
         )
 
 
-class HiTransformerModelForDocumentRepresentation(HiTransformerPreTrainedModel):
+class HATModelForDocumentRepresentation(HATPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
     def __init__(self, config, pooling='max'):
@@ -1053,13 +1161,13 @@ class HiTransformerModelForDocumentRepresentation(HiTransformerPreTrainedModel):
         self.num_labels = config.num_labels
         self.config = config
 
-        self.hi_transformer = HiTransformerModel(config)
-        self.pooler = HiTransformerPooler(config, pooling=pooling)
+        self.hat = HATModel(config)
+        self.pooler = HATPooler(config, pooling=pooling)
 
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_start_docstrings_to_model_forward(HAT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1087,7 +1195,7 @@ class HiTransformerModelForDocumentRepresentation(HiTransformerPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hi_transformer(
+        outputs = self.hat(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1118,10 +1226,10 @@ class HiTransformerModelForDocumentRepresentation(HiTransformerPreTrainedModel):
         )
 
 
-@add_start_docstrings(""" Hi-Transformer Model transformer for masked sentence representation prediction """,
-    HITRANSFORMER_START_DOCSTRING,
+@add_start_docstrings(""" HAT Model transformer for masked sentence representation prediction """,
+    HAT_START_DOCSTRING,
 )
-class HiTransformerModelForMaskedSentenceRepresentation(HiTransformerPreTrainedModel):
+class HATModelForMaskedSentenceRepresentation(HATPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
     def __init__(self, config):
@@ -1129,13 +1237,13 @@ class HiTransformerModelForMaskedSentenceRepresentation(HiTransformerPreTrainedM
         self.num_labels = config.num_labels
         self.config = config
 
-        self.hi_transformer = HiTransformerModel(config)
-        self.sentencizer = HiTransformerSentencizer(config)
+        self.hat = HATModel(config)
+        self.sentencizer = HATSentencizer(config)
 
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_start_docstrings_to_model_forward(HAT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1163,7 +1271,7 @@ class HiTransformerModelForMaskedSentenceRepresentation(HiTransformerPreTrainedM
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hi_transformer(
+        outputs = self.hat(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1196,22 +1304,22 @@ class HiTransformerModelForMaskedSentenceRepresentation(HiTransformerPreTrainedM
 
 @add_start_docstrings(
     """
-    Hi-Transformer Model with three heads on top as done during the pretraining: a `masked language modeling` head and a `document
+    HAT Model with three heads on top as done during the pretraining: a `masked language modeling` head and a `document
     representation prediction ` head and a `masked sentence representation prediction ` head.
     """,
-    HITRANSFORMER_START_DOCSTRING,
+    HAT_START_DOCSTRING,
 )
-class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
+class HATModelForBoWPreTraining(HATPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self.hi_transformer = HiTransformerModel(config)
+        self.hat = HATModel(config)
         if self.config.mlm or self.config.mslm:
-            self.lm_head = HiTransformerLMHead(config)
+            self.lm_head = HATLMHead(config)
         if self.config.srp or self.config.srp:
-            self.sentencizer = HiTransformerSentencizer(config)
+            self.sentencizer = HATSentencizer(config)
         if self.config.drp:
-            self.pooler = HiTransformerPooler(config, pooling='max')
+            self.pooler = HATPooler(config, pooling='max')
             self.document_cls = nn.Linear(config.hidden_size, config.vocab_size)
         if self.config.srp:
             self.sentence_cls = nn.Linear(config.hidden_size, config.vocab_size)
@@ -1238,7 +1346,7 @@ class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hi_transformer(
+        outputs = self.hat(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1311,7 +1419,7 @@ class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
             output = (prediction_scores,) + outputs[2:]
             return ((total_loss, masked_lm_loss, srp_loss, drp_loss) + output) if total_loss is not None else output
 
-        return HiTransformerForBoWPreTrainingOutput(
+        return HATForBoWPreTrainingOutput(
             loss=total_loss,
             mlm_loss=masked_lm_loss,
             srp_loss=srp_loss,
@@ -1326,12 +1434,12 @@ class HiTransformerModelForBoWPreTraining(HiTransformerPreTrainedModel):
 
 @add_start_docstrings(
     """
-    Hi-Transformer Model with three heads on top as done during the pretraining: a `masked language modeling` head and a `sentence
+    HAT Model with three heads on top as done during the pretraining: a `masked language modeling` head and a `sentence
     projection head` head and a document projection head` head.
     """,
-    HITRANSFORMER_START_DOCSTRING,
+    HAT_START_DOCSTRING,
 )
-class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
+class HATModelForVICRegPreTraining(HATPreTrainedModel):
     def __init__(self, config,
                  document_regularization=True,
                  sentence_regularization=True):
@@ -1339,14 +1447,14 @@ class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
 
         self.document_regularization = document_regularization
         self.sentence_regularization = sentence_regularization
-        self.hi_transformer = HiTransformerModel(config)
+        self.hat = HATModel(config)
         if self.config.mlm:
-            self.lm_head = HiTransformerLMHead(config)
+            self.lm_head = HATLMHead(config)
         if self.config.sent_sim or self.config.doc_sim:
-            self.sentencizer = HiTransformerSentencizer(config)
+            self.sentencizer = HATSentencizer(config)
             self.cosine = nn.CosineSimilarity(dim=1)
         if self.config.doc_sim:
-            self.pooler = HiTransformerPooler(config, pooling='max')
+            self.pooler = HATPooler(config, pooling='max')
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -1366,7 +1474,7 @@ class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        primary_outputs = self.hi_transformer(
+        primary_outputs = self.hat(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1376,7 +1484,7 @@ class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
             return_dict=return_dict,
         )
 
-        secondary_outputs = self.hi_transformer(
+        secondary_outputs = self.hat(
             secondary_input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1458,7 +1566,7 @@ class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
             output = (primary_prediction_scores,) + primary_outputs[2:]
             return ((total_loss, masked_lm_loss, sent_sim_loss, doc_sim_loss) + output) if total_loss is not None else output
 
-        return HiTransformerForVICRegPreTrainingOutput(
+        return HATForVICRegPreTrainingOutput(
             loss=total_loss,
             mlm_loss=masked_lm_loss,
             sent_sim_loss=sent_sim_loss,
@@ -1479,12 +1587,12 @@ class HiTransformerModelForVICRegPreTraining(HiTransformerPreTrainedModel):
 
 @add_start_docstrings(
     """
-    Hi-Transformer Model with three heads on top as done during the pretraining: a `masked language modeling` head and a `document
+    HAT Model with three heads on top as done during the pretraining: a `masked language modeling` head and a `document
     representation prediction ` head and a `masked sentence representation prediction ` head.
     """,
-    HITRANSFORMER_START_DOCSTRING,
+    HAT_START_DOCSTRING,
 )
-class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
+class HATModelForSimCLRPreTraining(HATPreTrainedModel):
     def __init__(self, config,
                  document_regularization=True,
                  sentence_regularization=True):
@@ -1492,13 +1600,13 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
 
         self.document_regularization = document_regularization
         self.sentence_regularization = sentence_regularization
-        self.hi_transformer = HiTransformerModel(config)
+        self.hat = HATModel(config)
         if self.config.mlm:
-            self.lm_head = HiTransformerLMHead(config)
+            self.lm_head = HATLMHead(config)
         if self.config.sent_sim or self.config.doc_sim:
-            self.sentencizer = HiTransformerSentencizer(config)
+            self.sentencizer = HATSentencizer(config)
         if self.config.doc_sim:
-            self.pooler = HiTransformerPooler(config, pooling='max')
+            self.pooler = HATPooler(config, pooling='max')
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -1518,7 +1626,7 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        primary_outputs = self.hi_transformer(
+        primary_outputs = self.hat(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1528,7 +1636,7 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
             return_dict=return_dict,
         )
 
-        secondary_outputs = self.hi_transformer(
+        secondary_outputs = self.hat(
             secondary_input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1669,7 +1777,7 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
             output = (primary_prediction_scores,) + primary_outputs[2:]
             return ((total_loss, masked_lm_loss, sent_contr_loss, doc_contr_loss) + output) if total_loss is not None else output
 
-        return HiTransformerForSimCLRPreTrainingOutput(
+        return HATForSimCLRPreTrainingOutput(
             loss=total_loss,
             mlm_loss=masked_lm_loss,
             sent_contr_loss=sent_contr_loss,
@@ -1686,12 +1794,12 @@ class HiTransformerModelForSimCLRPreTraining(HiTransformerPreTrainedModel):
 
 @add_start_docstrings(
     """
-    Hi-Transformer Model transformer with a sequence classification/regression head on top (a linear layer on top of the
+    HAT Model transformer with a sequence classification/regression head on top (a linear layer on top of the
     pooled output) e.g. for GLUE tasks.
     """,
-    HITRANSFORMER_START_DOCSTRING,
+    HAT_START_DOCSTRING,
 )
-class HiTransformerForSequenceClassification(HiTransformerPreTrainedModel):
+class HATForSequenceClassification(HATPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
     def __init__(self, config, pooling='max'):
@@ -1700,20 +1808,20 @@ class HiTransformerForSequenceClassification(HiTransformerPreTrainedModel):
         self.config = config
         self.pooling = pooling
 
-        self.hi_transformer = HiTransformerModel(config)
+        self.hat = HATModel(config)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
         if self.pooling != 'cls':
-            self.sentencizer = HiTransformerSentencizer(config)
-        self.pooler = HiTransformerPooler(config, pooling=pooling)
+            self.sentencizer = HATSentencizer(config)
+        self.pooler = HATPooler(config, pooling=pooling)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_start_docstrings_to_model_forward(HAT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1740,7 +1848,7 @@ class HiTransformerForSequenceClassification(HiTransformerPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hi_transformer(
+        outputs = self.hat(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1797,10 +1905,10 @@ class HiTransformerForSequenceClassification(HiTransformerPreTrainedModel):
         )
 
 
-@add_start_docstrings(""" Hi-Transformer Model transformer for masked sentence representation prediction """,
-    HITRANSFORMER_START_DOCSTRING,
+@add_start_docstrings(""" HAT Model transformer for masked sentence representation prediction """,
+    HAT_START_DOCSTRING,
 )
-class HiTransformerModelForSentenceClassification(HiTransformerPreTrainedModel):
+class HATModelForSequentialSentenceClassification(HATPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
     def __init__(self, config):
@@ -1808,8 +1916,8 @@ class HiTransformerModelForSentenceClassification(HiTransformerPreTrainedModel):
         self.num_labels = config.num_labels
         self.config = config
 
-        self.hi_transformer = HiTransformerModel(config)
-        self.sentencizer = HiTransformerSentencizer(config)
+        self.hat = HATModel(config)
+        self.sentencizer = HATSentencizer(config)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
         )
@@ -1819,7 +1927,7 @@ class HiTransformerModelForSentenceClassification(HiTransformerPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_start_docstrings_to_model_forward(HAT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1846,7 +1954,7 @@ class HiTransformerModelForSentenceClassification(HiTransformerPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hi_transformer(
+        outputs = self.hat(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1900,32 +2008,32 @@ class HiTransformerModelForSentenceClassification(HiTransformerPreTrainedModel):
 
 @add_start_docstrings(
     """
-    Hi-Transformer Model with a multiple choice classification head on top (a linear layer on top of the pooled output and a
+    HAT Model with a multiple choice classification head on top (a linear layer on top of the pooled output and a
     softmax) e.g. for RocStories/SWAG tasks.
     """,
-    HITRANSFORMER_START_DOCSTRING,
+    HAT_START_DOCSTRING,
 )
-class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
+class HATForMultipleChoice(HATPreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
     def __init__(self, config, pooling='last'):
         super().__init__(config)
 
         self.pooling = pooling
-        self.hi_transformer = HiTransformerModel(config)
+        self.hat = HATModel(config)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
         if self.pooling not in ['first', 'last']:
-            self.sentencizer = HiTransformerSentencizer(config)
-        self.pooler = HiTransformerPooler(config, pooling=pooling)
+            self.sentencizer = HATSentencizer(config)
+        self.pooler = HATPooler(config, pooling=pooling)
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, num_choices, sequence_length"))
+    @add_start_docstrings_to_model_forward(HAT_INPUTS_DOCSTRING.format("batch_size, num_choices, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1963,7 +2071,7 @@ class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
             else None
         )
 
-        outputs = self.hi_transformer(
+        outputs = self.hat(
             flat_input_ids,
             position_ids=flat_position_ids,
             token_type_ids=flat_token_type_ids,
@@ -2004,12 +2112,12 @@ class HiTransformerForMultipleChoice(HiTransformerPreTrainedModel):
 
 @add_start_docstrings(
     """
-    Hi-Transformer Model with a token classification head on top (a linear layer on top of the hidden-states output) e.g. for
+    HAT Model with a token classification head on top (a linear layer on top of the hidden-states output) e.g. for
     Named-Entity-Recognition (NER) tasks.
     """,
-    HITRANSFORMER_START_DOCSTRING,
+    HAT_START_DOCSTRING,
 )
-class HiTransformerForTokenClassification(HiTransformerPreTrainedModel):
+class HATForTokenClassification(HATPreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
@@ -2017,7 +2125,7 @@ class HiTransformerForTokenClassification(HiTransformerPreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
 
-        self.hi_transformer = HiTransformerModel(config, add_pooling_layer=False)
+        self.hat = HATModel(config, add_pooling_layer=False)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
         )
@@ -2027,7 +2135,7 @@ class HiTransformerForTokenClassification(HiTransformerPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_start_docstrings_to_model_forward(HAT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -2052,7 +2160,7 @@ class HiTransformerForTokenClassification(HiTransformerPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hi_transformer(
+        outputs = self.hat(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -2087,12 +2195,12 @@ class HiTransformerForTokenClassification(HiTransformerPreTrainedModel):
 
 @add_start_docstrings(
     """
-    Hi-Transformer Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear
+    HAT Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear
     layers on top of the hidden-states output to compute `span start logits` and `span end logits`).
     """,
-    HITRANSFORMER_START_DOCSTRING,
+    HAT_START_DOCSTRING,
 )
-class HiTransformerForQuestionAnswering(HiTransformerPreTrainedModel):
+class HATForQuestionAnswering(HATPreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
@@ -2100,13 +2208,13 @@ class HiTransformerForQuestionAnswering(HiTransformerPreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
 
-        self.hi_transformer = HiTransformerModel(config, add_pooling_layer=False)
+        self.hat = HATModel(config, add_pooling_layer=False)
         self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
 
         # Initialize weights and apply final processing
         self.post_init()
 
-    @add_start_docstrings_to_model_forward(HITRANSFORMER_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_start_docstrings_to_model_forward(HAT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         processor_class=_TOKENIZER_FOR_DOC,
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -2139,7 +2247,7 @@ class HiTransformerForQuestionAnswering(HiTransformerPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hi_transformer(
+        outputs = self.hat(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -2225,8 +2333,3 @@ def off_diagonal(x):
     assert n == m
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
-
-if __name__ == "__main__":
-    x = torch.rand((2, 5), dtype=torch.float)
-    y = torch.rand((2, 5), dtype=torch.float)
-    losses = vic_reg(x, y)

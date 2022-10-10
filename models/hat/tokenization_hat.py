@@ -1,16 +1,28 @@
-"""Tokenization classes for Hi-Transformer."""
+# coding=utf-8
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Tokenization classes for HAT."""
 import torch
 from transformers import AutoTokenizer
-from .configuration_hi_transformer import HiTransformerConfig
+from .configuration_hat import HATConfig
 from transformers.utils import logging
 from nltk import sent_tokenize
 logger = logging.get_logger(__name__)
 
 
-class HiTransformerTokenizer:
+class HATTokenizer:
     def __init__(self, tokenizer=None):
         self._tokenizer = tokenizer
-        self.config = HiTransformerConfig.from_pretrained(self._tokenizer.name_or_path)
+        self.config = HATConfig.from_pretrained(self._tokenizer.name_or_path)
         self._tokenizer.model_max_length = self.model_max_length
         self.type2id = {'input_ids': (self._tokenizer.cls_token_id, self._tokenizer.pad_token_id),
                         'token_type_ids': (0, 0),
@@ -227,13 +239,3 @@ class HiTransformerTokenizer:
                               flat_input[:chunk_size-1],
                               torch.tensor([self.pad_token_id] * max(0, chunk_size - len(flat_input) - 1), dtype=torch.int)
                               ))
-
-
-if __name__ == "__main__":
-    tokenizer = HiTransformerTokenizer.from_pretrained('roberta-base')
-    inputs = tokenizer([' '.join(['dog'] * 8192),
-                        ' '.join(['cat'] * 7000),
-                       ' '.join(['mouse'] * 5000)],
-                       padding=True, max_length=8192, truncation=True
-                       )
-    print()

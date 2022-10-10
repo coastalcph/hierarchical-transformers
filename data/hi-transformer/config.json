@@ -1,6 +1,6 @@
 {
   "architectures": [
-    "HiTransformerForMaskedLM"
+    "HATForMaskedLM"
   ],
   "attention_probs_dropout_prob": 0.1,
   "bos_token_id": 1,

@@ -14,7 +14,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Finetuning sentence classification models"""
+""" Finetuning sequential sentence classification models"""
 
 import logging
 import os
@@ -41,8 +41,7 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
-from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
-    HiTransformerModelForSentenceClassification
+from models.hat import HATConfig, HATTokenizer, HATModelForSequentialSentenceClassification
 from models.longformer import LongformerTokenizer, LongformerModelForSentenceClassification
 from sklearn.metrics import accuracy_score, mean_absolute_error
 from language_modelling.data_collator import DataCollatorForSentenceOrder
@@ -286,8 +285,8 @@ def main():
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    if 'hi-transformer' in model_args.model_name_or_path:
-        config = HiTransformerConfig.from_pretrained(
+    if 'hat' in model_args.model_name_or_path:
+        config = HATConfig.from_pretrained(
             model_args.model_name_or_path,
             num_labels=1,
             finetuning_task="sentence-order",
@@ -295,7 +294,7 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-        tokenizer = HiTransformerTokenizer.from_pretrained(
+        tokenizer = HATTokenizer.from_pretrained(
             model_args.model_name_or_path,
             do_lower_case=model_args.do_lower_case,
             cache_dir=model_args.cache_dir,
@@ -303,7 +302,7 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-        model = HiTransformerModelForSentenceClassification.from_pretrained(
+        model = HATModelForSequentialSentenceClassification.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,

@@ -1,7 +1,4 @@
 # coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
-# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -13,7 +10,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Hi-Transformer configuration"""
+""" HAT configuration"""
 from collections import OrderedDict
 from typing import Mapping
 
@@ -24,18 +21,18 @@ from transformers import PretrainedConfig
 
 logger = logging.get_logger(__name__)
 
-HI_TRANSFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP = {
-    "hi-transformer-base": "https://huggingface.co/hi-transformer-base/resolve/main/config.json",
-    "hi-transformer-large": "https://huggingface.co/hi-transformer-large/resolve/main/config.json",
+HAT_PRETRAINED_CONFIG_ARCHIVE_MAP = {
+    "kiddothe2b/hat-base-4096": "https://huggingface.co/kiddothe2b/hat-base-4096/resolve/main/config.json",
+    "kiddothe2b/adhoc-hat-base-4096": "https://huggingface.co/kiddothe2b/adhoc-hat-base-4096/resolve/main/config.json",
 }
 
 
-class HiTransformerConfig(PretrainedConfig):
+class HATConfig(PretrainedConfig):
     r"""
-    This is the configuration class to store the configuration of a :class:`~transformers.HiTransformer`.
-    It is used to instantiate a Hi-Transformer model according to the specified arguments,
+    This is the configuration class to store the configuration of a :class:`~transformers.HAT`.
+    It is used to instantiate a HAT model according to the specified arguments,
     defining the model architecture. Instantiating a configuration with the defaults will yield a similar configuration
-    to that of the Hi-Transformer `hi-transformer-base <https://huggingface.co/hi-transformer-base>`__ architecture.
+    to that of the HAT `kiddothe2b/hat-base-4096 <https://huggingface.co/kiddothe2b/hat-base-4096>`__ architecture.
 
     Configuration objects inherit from :class:`~transformers.PretrainedConfig` and can be used to control the model
     outputs. Read the documentation from :class:`~transformers.PretrainedConfig` for more information.
@@ -92,7 +89,7 @@ class HiTransformerConfig(PretrainedConfig):
         classifier_dropout (:obj:`float`, `optional`):
             The dropout ratio for the classification head.
     """
-    model_type = "hi-transformer"
+    model_type = "hierarchical-transformer"
 
     def __init__(
         self,
@@ -141,7 +138,7 @@ class HiTransformerConfig(PretrainedConfig):
         self.classifier_dropout = classifier_dropout
 
 
-class HiTransformerOnnxConfig(OnnxConfig):
+class HATOnnxConfig(OnnxConfig):
     @property
     def inputs(self) -> Mapping[str, Mapping[int, str]]:
         return OrderedDict(

@@ -5,7 +5,7 @@ from transformers import PreTrainedTokenizerFast, AutoTokenizer
 import argparse
 
 CUSTOM_TOK_FOLDER = '../data/custom-tokenizer'
-HI_TRANSFORMER_FOLDER = '../data/hi-transformer'
+hat_FOLDER = '../data/hi-transformer'
 ROBERTA_FOLDER = '../data/roberta'
 
 
@@ -63,7 +63,7 @@ def main():
         mask_token='<mask>',
     )
 
-    new_hi_transformer_tokenizer = PreTrainedTokenizerFast(
+    new_hat_tokenizer = PreTrainedTokenizerFast(
         tokenizer_object=backend_tokenizer,
         model_max_length=8192,
         # padding_side="Set me if you want",
@@ -80,7 +80,7 @@ def main():
 
     new_roberta_tokenizer.save_pretrained(CUSTOM_TOK_FOLDER)
     new_roberta_tokenizer.save_pretrained(ROBERTA_FOLDER)
-    new_hi_transformer_tokenizer.save_pretrained(HI_TRANSFORMER_FOLDER)
+    new_hat_tokenizer.save_pretrained(hat_FOLDER)
 
     # re-load tokenizer and test
     reloaded_tokenizer = AutoTokenizer.from_pretrained(CUSTOM_TOK_FOLDER)

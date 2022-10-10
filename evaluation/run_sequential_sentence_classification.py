@@ -29,8 +29,9 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 from data_collator import DataCollatorForMultiLabelClassification
-from models.hi_transformer import HiTransformerModelForSentenceClassification, HiTransformerTokenizer, HiTransformerConfig
+from models.hat import HATModelForSequentialSentenceClassification, HATTokenizer, HATConfig
 from models.longformer import LongformerModelForSentenceClassification, LongformerTokenizer
+from models.big_bird import BigBirdModelForSentenceClassification, BigbirdTokenizer
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -220,28 +221,28 @@ def main():
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
 
-    if 'hi-transformer' in model_args.model_name_or_path:
-        config = HiTransformerConfig.from_pretrained(
+    if 'hat' in model_args.model_name_or_path:
+        config = HATConfig.from_pretrained(
             model_args.model_name_or_path,
             num_labels=num_labels,
             finetuning_task="ecthr-args",
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
         )
-        tokenizer = HiTransformerTokenizer.from_pretrained(
+        tokenizer = HATTokenizer.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=model_args.cache_dir,
             use_fast=model_args.use_fast_tokenizer,
             revision=model_args.model_revision,
         )
-        model = HiTransformerModelForSentenceClassification.from_pretrained(
+        model = HATModelForSequentialSentenceClassification.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
         )
-    else:
+    elif 'longformer' in model_args.model_name_or_path:
         config = AutoConfig.from_pretrained(
             model_args.model_name_or_path,
             num_labels=num_labels,
@@ -262,6 +263,33 @@ def main():
             revision=model_args.model_revision,
         )
         model = LongformerModelForSentenceClassification.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+        )
+    elif 'big-bird' in model_args.model_name_or_path:
+        config = AutoConfig.from_pretrained(
+            model_args.model_name_or_path,
+            num_labels=num_labels,
+            finetuning_task="ecthr-args",
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+        )
+        config.max_sentence_size = 128
+        config.max_sentence_length = 128
+        config.max_sentences = data_args.max_sentences
+        config.model_max_length = 4096
+        config.cls_token_id = config.bos_token_id
+        config.sep_token_id = config.eos_token_id
+        tokenizer = BigbirdTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            cache_dir=model_args.cache_dir,
+            use_fast=model_args.use_fast_tokenizer,
+            revision=model_args.model_revision,
+        )
+        model = BigBirdModelForSentenceClassification.from_pretrained(
             model_args.model_name_or_path,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
             config=config,

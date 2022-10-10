@@ -43,8 +43,7 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
-from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
-    HiTransformerForMultipleChoice
+from models.hat import HATConfig, HATTokenizer, HATForMultipleChoice
 from models.longformer import LongformerTokenizer, LongformerForMultipleChoice
 from sklearn.metrics import accuracy_score
 from language_modelling.data_collator import DataCollatorForMultipleChoice
@@ -258,8 +257,8 @@ def main():
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    if 'hi-transformer' in model_args.model_name_or_path:
-        config = HiTransformerConfig.from_pretrained(
+    if 'hat' in model_args.model_name_or_path:
+        config = HATConfig.from_pretrained(
             model_args.model_name_or_path,
             num_labels=num_labels,
             finetuning_task="quality",
@@ -267,7 +266,7 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-        tokenizer = HiTransformerTokenizer.from_pretrained(
+        tokenizer = HATTokenizer.from_pretrained(
             model_args.model_name_or_path,
             do_lower_case=model_args.do_lower_case,
             cache_dir=model_args.cache_dir,
@@ -275,7 +274,7 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-        model = HiTransformerForMultipleChoice.from_pretrained(
+        model = HATForMultipleChoice.from_pretrained(
             model_args.model_name_or_path,
             pooling=model_args.pooling,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -293,9 +292,6 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-
-        # if "allenai/longformer-base-4096" in model_args.model_name_or_path:
-        #     config.attention_window = [128] * config.num_hidden_layers
 
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,

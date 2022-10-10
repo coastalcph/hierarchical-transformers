@@ -6,7 +6,7 @@ LAYOUT='p1'
 MODEL_MAX_LENGTH=4096
 MAX_SENTENCES=32
 
-python3 models/hi_transformer/convert_roberta_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
+python3 models/hat/convert_roberta_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
 
 python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm_stream.py \
     --model_name_or_path data/PLMs/hi-transformer-${LAYOUT}-roberta \

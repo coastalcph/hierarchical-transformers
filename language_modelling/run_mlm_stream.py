@@ -49,7 +49,7 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
-from models.hi_transformer import HiTransformerForMaskedLM, HiTransformerTokenizer, HiTransformerConfig
+from models.hat import HATForMaskedLM, HATTokenizer, HATConfig
 from models.longformer import LongformerTokenizer, LongformerForMaskedLM
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -353,9 +353,9 @@ def main():
         "use_auth_token": True if model_args.use_auth_token else None,
     }
     if model_args.config_name and 'hi-transformer' in model_args.config_name:
-        config = HiTransformerConfig.from_pretrained(model_args.config_name, **config_kwargs)
+        config = HATConfig.from_pretrained(model_args.config_name, **config_kwargs)
     elif model_args.model_name_or_path and 'hi-transformer' in model_args.model_name_or_path:
-        config = HiTransformerConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
+        config = HATConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
     elif model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
         config.max_sentence_size = 128
@@ -382,11 +382,11 @@ def main():
     }
     if config.model_type == 'hi-transformer':
         if model_args.tokenizer_name:
-            tokenizer = HiTransformerTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
+            tokenizer = HATTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
         elif model_args.model_name_or_path:
-            tokenizer = HiTransformerTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
+            tokenizer = HATTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
         elif model_args.config_name:
-            tokenizer = HiTransformerTokenizer.from_pretrained(model_args.config_name, **tokenizer_kwargs)
+            tokenizer = HATTokenizer.from_pretrained(model_args.config_name, **tokenizer_kwargs)
     elif config.model_type == 'longformer':
         tokenizer = LongformerTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
     elif model_args.tokenizer_name:
@@ -401,7 +401,7 @@ def main():
 
     if model_args.model_name_or_path:
         if config.model_type == 'hi-transformer':
-            model = HiTransformerForMaskedLM.from_pretrained(
+            model = HATForMaskedLM.from_pretrained(
                 model_args.model_name_or_path,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
                 config=config,
@@ -430,7 +430,7 @@ def main():
     else:
         logger.info("Training new model from scratch")
         if config.model_type == 'hi-transformer':
-            model = HiTransformerForMaskedLM.from_config(config)
+            model = HATForMaskedLM.from_config(config)
         else:
             model = AutoModelForMaskedLM.from_config(config)
 

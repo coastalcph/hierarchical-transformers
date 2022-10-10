@@ -43,8 +43,7 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
-from models.hi_transformer import HiTransformerConfig, HiTransformerTokenizer, \
-    HiTransformerForSequenceClassification
+from models.hat import HATConfig, HATTokenizer, HATForSequenceClassification
 from models.longformer import LongformerTokenizer, LongformerModelForSequenceClassification
 from language_modelling.data_collator import DataCollatorForDocumentClassification
 from sklearn.metrics import f1_score
@@ -251,18 +250,14 @@ def main():
     num_labels = train_dataset.features['labels'].feature.num_classes
     label_ids = train_dataset.features['labels'].feature.names
 
-    # with open('eurovoc_descriptors.json') as file:
-    #     eurovoc_descs = json.load(file)
-    # label_names = {idx: eurovoc_descs[label_id]['en'] for idx, label_id in enumerate(label_ids)}
-    #
     label_names = label_ids
     label_list = list(range(num_labels))
 
     # Load pretrained model and tokenizer
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    if 'hi-transformer' in model_args.model_name_or_path:
-        config = HiTransformerConfig.from_pretrained(
+    if 'hat' in model_args.model_name_or_path:
+        config = HATConfig.from_pretrained(
             model_args.model_name_or_path,
             num_labels=num_labels,
             finetuning_task="document-classification",
@@ -270,7 +265,7 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-        tokenizer = HiTransformerTokenizer.from_pretrained(
+        tokenizer = HATTokenizer.from_pretrained(
             model_args.model_name_or_path,
             do_lower_case=model_args.do_lower_case,
             cache_dir=model_args.cache_dir,
@@ -278,7 +273,7 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-        model = HiTransformerForSequenceClassification.from_pretrained(
+        model = HATForSequenceClassification.from_pretrained(
             model_args.model_name_or_path,
             pooling=model_args.pooling,
             from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -296,9 +291,6 @@ def main():
             revision=model_args.model_revision,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-
-        # if "allenai/longformer-base-4096" in model_args.model_name_or_path:
-        #     config.attention_window = [128] * config.num_hidden_layers
 
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,

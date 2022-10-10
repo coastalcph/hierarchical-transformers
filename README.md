@@ -81,12 +81,12 @@ tqdm>=4.62.0
 
 So far, we are testing the core implementations, you can play around with the following script:
 
-* `Hi-Transformer`: `/models/hi-transformer/validate_hi_transformer.py`
+* `Hi-Transformer`: `/models/hi-transformer/validate_hat.py`
 
 You can also try to train a new LM based on `Hi-Transformer`:
 
-* `MLM`: `train_hi_transformer_mlm.sh`
-* `Multi-Objective Pretraining (MLM, DRP, SRP)`: `train_hi_transformer_.sh`
+* `MLM`: `train_hat_mlm.sh`
+* `Multi-Objective Pretraining (MLM, DRP, SRP)`: `train_hat_.sh`
 
 
 Try on Google Colab: https://colab.research.google.com/drive/15feh49wqBshgkcvbO6QypvJoa3dG6P5S?usp=sharing
