@@ -1,9 +1,8 @@
-import copy
 import warnings
 
 import torch
 import time
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoModelForMultipleChoice
+from transformers import AutoConfig, AutoModelForSequenceClassification
 from models.longformer import LongformerModelForSentenceClassification
 from models.big_bird import BigBirdModelForSentenceClassification
 import numpy as np
@@ -55,7 +54,7 @@ def test_memory_usage(model, steps=100, batch_size=2, seq_length=4096,  mode='te
 def estimate_model_size():
     for mode in ['train', 'test']:
         print(F'MODE: {mode.upper()}')
-        for task in ['sent_cls']:
+        for task in ['doc_cls', 'sent_cls']:
             MAX_SENTENCE_LENGTH = 128
             roberta_config = AutoConfig.from_pretrained('roberta-base')
             print('-' * 150)
@@ -69,23 +68,23 @@ def estimate_model_size():
             print(F'MAX SEQ LENGTH: {int(MAX_SENTENCES * MAX_SENTENCE_LENGTH)}')
             print('-' * 150)
             # load dummy longformer model
-            # lf_config = AutoConfig.from_pretrained('allenai/longformer-base-4096')
-            # lf_config.num_labels = 2
-            # lf_config.max_sentence_length = 128
-            # lf_config.max_sentences = 32
-            # lf_config.cls_token_id = lf_config.bos_token_id
-            # lf_config.sep_token_id = lf_config.eos_token_id
-            # if task == 'doc_cls':
-            #     htf_model = AutoModelForSequenceClassification.from_config(lf_config)
-            # else:
-            #     htf_model = LongformerModelForSentenceClassification.from_config(lf_config)
-            # model_total_params = sum(p.numel() for p in htf_model.longformer.parameters() if p.requires_grad)
-            # model_total_params = model_total_params / 1e6
-            # memory_use, time_use = test_memory_usage(htf_model, seq_length=4096, mode=mode,
-            #                                          task_type=task)
-            # print(f'Original Longformer (12-layer) model has {model_total_params:.1f}M number of parameters '
-            #       f'and {memory_use:.2f}GB peak memory use and {time_use:.3f} batch/second!')
-            # print('-' * 150)
+            lf_config = AutoConfig.from_pretrained('allenai/longformer-base-4096')
+            lf_config.num_labels = 2
+            lf_config.max_sentence_length = 128
+            lf_config.max_sentences = 32
+            lf_config.cls_token_id = lf_config.bos_token_id
+            lf_config.sep_token_id = lf_config.eos_token_id
+            if task == 'doc_cls':
+                htf_model = AutoModelForSequenceClassification.from_config(lf_config)
+            else:
+                htf_model = LongformerModelForSentenceClassification.from_config(lf_config)
+            model_total_params = sum(p.numel() for p in htf_model.longformer.parameters() if p.requires_grad)
+            model_total_params = model_total_params / 1e6
+            memory_use, time_use = test_memory_usage(htf_model, seq_length=4096, mode=mode,
+                                                     task_type=task)
+            print(f'Original Longformer (12-layer) model has {model_total_params:.1f}M number of parameters '
+                  f'and {memory_use:.2f}GB peak memory use and {time_use:.3f} batch/second!')
+            print('-' * 150)
 
             # load dummy bigbird model
             lf_config = AutoConfig.from_pretrained('google/bigbird-roberta-base')
