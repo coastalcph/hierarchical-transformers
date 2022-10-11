@@ -75,7 +75,7 @@ def test_memory_usage(model, steps=40, batch_size=2, seq_length=1024,  mode='tes
     return np.mean(max_mem), np.mean(max_time)
 
 
-def estimate_model_size():
+def efficiency_metrics():
     MAX_SENTENCE_LENGTH = 128
     CONFIGS = [{'num_hidden_layers': 6,
                 'hidden_size': 256,
@@ -103,27 +103,6 @@ def estimate_model_size():
                     print(F'MAX SEQ LENGTH: {int(max_sentences * MAX_SENTENCE_LENGTH)}')
                     print('-' * 150)
 
-                    # lf_config = AutoConfig.from_pretrained('google/bert_uncased_L-8_H-256_A-4')
-                    # lf_config.num_hidden_layers = CONFIG['num_hidden_layers']
-                    # # Transformer parameters
-                    # lf_config.hidden_size = CONFIG['hidden_size']
-                    # lf_config.intermediate_size = CONFIG['intermediate_size']
-                    # lf_config.num_attention_heads = CONFIG['num_attention_heads']
-                    # # Vocabulary parameters
-                    # lf_config.vocab_size = 32000
-                    # lf_config.type_vocab_size = 2
-                    # lf_config.model_max_length = int(MAX_SENTENCE_LENGTH * max_sentences)
-                    # lf_config.max_position_embeddings = int(MAX_SENTENCE_LENGTH * max_sentences) + 2
-                    # lf_config.cls_token_id = 100
-                    # # load dummy longformer model
-                    # htf_model = AutoModelForMaskedLM.from_config(lf_config)
-                    # model_total_params = sum(p.numel() for p in htf_model.bert.parameters() if p.requires_grad)
-                    # model_total_params = model_total_params / 1e6
-                    # memory_use, time_use = test_memory_usage(htf_model, seq_length=lf_config.model_max_length, mode=mode, task_type=task)
-                    # print(f'RoBERTa model has {model_total_params:.1f}M number of parameters '
-                    #       f'and {memory_use:.2f}GB peak memory use and {time_use:.3f} batch/second!')
-                    # print('-' * 150)
-
                     lf_config = AutoConfig.from_pretrained('allenai/longformer-base-4096')
                     lf_config.num_hidden_layers = CONFIG['num_hidden_layers']
                     # Transformer parameters
@@ -147,7 +126,7 @@ def estimate_model_size():
                     lf_mem_use = copy.deepcopy(memory_use)
                     lf_time_use = copy.deepcopy(time_use)
                     print(f'Longformer model has {model_total_params:.1f}M number of parameters '
-                           f'and {memory_use:.2f}GB peak memory use and {time_use:.3f} batch/second!')
+                          f'and {memory_use:.2f}GB peak memory use and {time_use:.3f} batch/second!')
                     print('-' * 150)
 
                     for layout in LAYOUTS:
@@ -157,7 +136,7 @@ def estimate_model_size():
                                                         "document_encoder": True if 'D' in block_pattern else False}
 
                         # load dummy config and change specifications
-                        htf_config = HATConfig.from_pretrained(f'{DATA_DIR}/hi-transformer')
+                        htf_config = HATConfig.from_pretrained(f'{DATA_DIR}/hat')
                         # Text length parameters
                         htf_config.max_sentence_length = MAX_SENTENCE_LENGTH
                         htf_config.max_sentences = max_sentences
@@ -173,7 +152,7 @@ def estimate_model_size():
                         htf_config.vocab_size = 32000
                         htf_config.type_vocab_size = 2
 
-                        # load dummy hi-transformer model
+                        # load dummy hat model
                         htf_model = TASK_MODEL[task]['hilm'].from_config(htf_config)
                         model_total_params = sum(p.numel() for p in htf_model.hat.parameters() if p.requires_grad)
                         model_total_params = model_total_params / 1e6
@@ -185,4 +164,4 @@ def estimate_model_size():
 
 
 if __name__ == '__main__':
-    estimate_model_size()
+    efficiency_metrics()

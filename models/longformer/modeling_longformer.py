@@ -230,8 +230,8 @@ class LongformerForMaskedLM(LongformerPreTrainedModel):
         >>> import torch
         >>> from transformers import LongformerForMaskedLM, LongformerTokenizer
 
-        >>> model = LongformerForMaskedLM.from_pretrained("allenai/longformer-base-4096")
-        >>> tokenizer = LongformerTokenizer.from_pretrained("allenai/longformer-base-4096")
+        >>> model = LongformerForMaskedLM.from_pretrained("kiddothe2b/longformer-base-4096")
+        >>> tokenizer = LongformerTokenizer.from_pretrained("kiddothe2b/longformer-base-4096")
 
         >>> SAMPLE_TEXT = " ".join(["Hello world! "] * 1000)  # long input document
         >>> input_ids = torch.tensor(tokenizer.encode(SAMPLE_TEXT)).unsqueeze(0)  # batch of size 1

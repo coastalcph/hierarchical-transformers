@@ -22,8 +22,8 @@ from transformers import PretrainedConfig
 logger = logging.get_logger(__name__)
 
 HAT_PRETRAINED_CONFIG_ARCHIVE_MAP = {
-    "kiddothe2b/hat-base-4096": "https://huggingface.co/kiddothe2b/hat-base-4096/resolve/main/config.json",
-    "kiddothe2b/adhoc-hat-base-4096": "https://huggingface.co/kiddothe2b/adhoc-hat-base-4096/resolve/main/config.json",
+    "kiddothe2b/hierarchical-transformer-base-4096": "https://huggingface.co/kiddothe2b/hierarchical-transformer-base-4096/resolve/main/config.json",
+    "kiddothe2b/adhoc-hierarchical-transformer-base-4096": "https://huggingface.co/kiddothe2b/adhoc-hierarchical-transformer-base-4096/resolve/main/config.json",
 }
 
 
@@ -32,7 +32,8 @@ class HATConfig(PretrainedConfig):
     This is the configuration class to store the configuration of a :class:`~transformers.HAT`.
     It is used to instantiate a HAT model according to the specified arguments,
     defining the model architecture. Instantiating a configuration with the defaults will yield a similar configuration
-    to that of the HAT `kiddothe2b/hat-base-4096 <https://huggingface.co/kiddothe2b/hat-base-4096>`__ architecture.
+    to that of the HAT `kiddothe2b/hierarchical-transformer-base-4096
+    <https://huggingface.co/kiddothe2b/hierarchical-transformer-base-4096>`__ architecture.
 
     Configuration objects inherit from :class:`~transformers.PretrainedConfig` and can be used to control the model
     outputs. Read the documentation from :class:`~transformers.PretrainedConfig` for more information.

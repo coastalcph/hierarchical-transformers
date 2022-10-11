@@ -67,10 +67,10 @@ def test_memory_usage(model, steps=40, batch_size=2, seq_length=4096,  mode='tes
     return np.mean(max_mem), np.mean(max_time)
 
 
-def estimate_model_size():
+def efficiency_metrics():
     for mode in ['train', 'test']:
         print(F'MODE: {mode.upper()}')
-        for task in ['sent_cls']:
+        for task in TASK_MODEL:
             MAX_SENTENCE_LENGTH = 128
             roberta_config = AutoConfig.from_pretrained('roberta-base')
             print('-' * 150)
@@ -144,4 +144,30 @@ def estimate_model_size():
 
 
 if __name__ == '__main__':
-    estimate_model_size()
+    efficiency_metrics()
+
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# MODE: TRAIN
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# TASK: SENT_CLS	NUM LAYERS: 12	NUM HIDDEN: 768	ATTENTION HEADS: 12
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# MAX SEQ LENGTH: 4096
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# Longformer (12-layer) model has 148.1M number of parameters and 10.77GB peak memory use and 0.459 batch/second!
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# Hi-transformer model with layout f12 has 152.2M number of parameters 8.96GB peak memory use (-20.24%) and 0.343 batch/second (-33.80%)!
+# Hi-transformer model with layout p1 has 152.2M number of parameters 8.97GB peak memory use (-20.11%) and 0.344 batch/second (-33.42%)!
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# MODE: TEST
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# TASK: SENT_CLS	NUM LAYERS: 12	NUM HIDDEN: 768	ATTENTION HEADS: 12
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# MAX SEQ LENGTH: 4096
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# Longformer (12-layer) model has 148.1M number of parameters and 0.98GB peak memory use and 0.131 batch/second!
+# ------------------------------------------------------------------------------------------------------------------------------------------------------
+# Hi-transformer model with layout f12 has 152.2M number of parameters 0.90GB peak memory use (-8.59%) and 0.115 batch/second (-13.96%)!
+# Hi-transformer model with layout p1 has 152.2M number of parameters 0.90GB peak memory use (-8.59%) and 0.114 batch/second (-14.45%)!
+# ------------------------------------------------------------------------------------------------------------------------------------------------------

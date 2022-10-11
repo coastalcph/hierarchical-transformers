@@ -59,7 +59,7 @@ def convert_bert_to_htf():
 
     # load dummy config and change specifications
     bert_config = bert_model.config
-    htf_config = HATConfig.from_pretrained(f'{DATA_DIR}/hi-transformer')
+    htf_config = HATConfig.from_pretrained(f'{DATA_DIR}/hat')
     # Text length parameters
     htf_config.max_sentence_length = MAX_SENTENCE_LENGTH
     htf_config.max_sentences = MAX_SENTENCES
@@ -115,10 +115,10 @@ def convert_bert_to_htf():
         htf_model.lm_head.bias = copy.deepcopy(bert_model.cls.predictions.bias)
 
     # save model
-    htf_model.save_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-{config.warmup_strategy}')
+    htf_model.save_pretrained(f'{DATA_DIR}/PLMs/hat-{config.layout}-{config.warmup_strategy}')
 
     # save tokenizer
-    tokenizer.save_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-{config.warmup_strategy}')
+    tokenizer.save_pretrained(f'{DATA_DIR}/PLMs/hat-{config.layout}-{config.warmup_strategy}')
 
     # re-load model
     htf_model = HATForMaskedLM.from_pretrained(f'{DATA_DIR}/PLMs/hat-{config.layout}-{config.warmup_strategy}')

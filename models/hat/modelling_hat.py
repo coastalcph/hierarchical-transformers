@@ -43,13 +43,13 @@ from transformers import PretrainedConfig
 
 logger = logging.get_logger(__name__)
 
-_CHECKPOINT_FOR_DOC = "kiddothe2b/hat-base-4096"
+_CHECKPOINT_FOR_DOC = "kiddothe2b/hierarchical-transformer-base-4096"
 _CONFIG_FOR_DOC = "HATConfig"
 _TOKENIZER_FOR_DOC = "HATTokenizer"
 
 HAT_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "kiddothe2b/hat-base-4096",
-    "kiddothe2b/adhoc-hat-base-4096",
+    "kiddothe2b/hierarchical-transformer-base-4096",
+    "kiddothe2b/adhoc-hierarchical-transformer-base-4096",
     # See all HAT models at https://huggingface.co/models?filter=hierarchical-transformer
 ]
 

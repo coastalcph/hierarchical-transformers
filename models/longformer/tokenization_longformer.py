@@ -1,9 +1,12 @@
-"""Tokenization classes for Hi-Transformer."""
+"""Tokenization classes for Longformer."""
 import torch
 from transformers import AutoTokenizer
 from transformers.models.longformer.configuration_longformer import LongformerConfig
 from transformers.utils import logging
-from nltk import sent_tokenize
+try:
+    from nltk import sent_tokenize
+except:
+    raise Exception('NLTK is not installed! Install it with `pip install nltk`...')
 logger = logging.get_logger(__name__)
 
 

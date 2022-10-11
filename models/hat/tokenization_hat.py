@@ -15,7 +15,10 @@ import torch
 from transformers import AutoTokenizer
 from .configuration_hat import HATConfig
 from transformers.utils import logging
-from nltk import sent_tokenize
+try:
+    from nltk import sent_tokenize
+except:
+    raise Exception('NLTK is not installed! Install it with `pip install nltk`...')
 logger = logging.get_logger(__name__)
 
 

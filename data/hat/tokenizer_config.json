@@ -1,0 +1,1 @@
+{"model_max_length": 4096, "bos_token": "<s>", "eos_token": "</s>", "unk_token": "<unk>", "sep_token": "</s>", "pad_token": "<pad>", "cls_token": "<s>", "mask_token": "<mask>", "tokenizer_class": "PreTrainedTokenizerFast", "auto_map":  {"AutoTokenizer": ["tokenization_hat.HATTokenizer", "tokenization_hat.HATTokenizer"]}}

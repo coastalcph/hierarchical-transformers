@@ -38,7 +38,7 @@ def convert_roberta_to_htf():
 
     # load dummy config and change specifications
     roberta_config = roberta_model.config
-    htf_config = HATConfig.from_pretrained(f'{DATA_DIR}/hi-transformer')
+    htf_config = HATConfig.from_pretrained(f'{DATA_DIR}/hat')
     # Text length parameters
     htf_config.max_sentence_length = MAX_SENTENCE_LENGTH
     htf_config.max_sentences = MAX_SENTENCES
@@ -79,10 +79,10 @@ def convert_roberta_to_htf():
     htf_model.lm_head.load_state_dict(roberta_model.lm_head.state_dict())
 
     # save model
-    htf_model.save_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-roberta')
+    htf_model.save_pretrained(f'{DATA_DIR}/PLMs/hat-{config.layout}-roberta')
 
     # save tokenizer
-    tokenizer.save_pretrained(f'{DATA_DIR}/PLMs/hi-transformer-{config.layout}-roberta')
+    tokenizer.save_pretrained(f'{DATA_DIR}/PLMs/hat-{config.layout}-roberta')
 
     # re-load model
     htf_model = HATForMaskedLM.from_pretrained(f'{DATA_DIR}/PLMs/hat-{config.layout}-roberta')
