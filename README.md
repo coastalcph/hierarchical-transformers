@@ -86,7 +86,7 @@ e.g., a 6-layer model has 12 effective transformer blocks (Layout: SD/SD/SD/SD/S
 
 In thi study, we examine the efficacy of 8 alternative layouts:
 
-```json lines
+```json
 LAYOUTS = {
     'I1': 'SD|SD|SD|SD|SD|SD',
     'I2': 'S|SD|D|S|SD|D|S|SD|D',
