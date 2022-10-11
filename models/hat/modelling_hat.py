@@ -1078,7 +1078,7 @@ class HATForMaskedLM(HATPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self.hat = HATModel(config)
+        self.hi_transformer = HATModel(config)
         self.lm_head = HATLMHead(config)
 
         # The LM head weights require special treatment only when they are tied with the word embeddings
@@ -1092,6 +1092,32 @@ class HATForMaskedLM(HATPreTrainedModel):
 
     def set_output_embeddings(self, new_embeddings):
         self.lm_head.decoder = new_embeddings
+
+    def get_input_embeddings(self):
+        return self.hi_transformer.embeddings.word_embeddings
+
+    def set_input_embeddings(self, value):
+        self.hi_transformer.embeddings.word_embeddings = value
+
+    def _tie_or_clone_weights(self, output_embeddings, input_embeddings):
+        """Tie or clone module weights depending of whether we are using TorchScript or not"""
+        if self.config.torchscript:
+            output_embeddings.weight = nn.Parameter(input_embeddings.weight.clone())
+        else:
+            output_embeddings.weight = input_embeddings.weight
+
+        if getattr(output_embeddings, "bias", None) is not None:
+            output_embeddings.bias.data = nn.functional.pad(
+                output_embeddings.bias.data,
+                (
+                    0,
+                    output_embeddings.weight.shape[0] - output_embeddings.bias.shape[0],
+                ),
+                "constant",
+                0,
+            )
+        if hasattr(output_embeddings, "out_features") and hasattr(input_embeddings, "num_embeddings"):
+            output_embeddings.out_features = input_embeddings.num_embeddings
 
     @add_start_docstrings_to_model_forward(HAT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
@@ -1123,7 +1149,7 @@ class HATForMaskedLM(HATPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hat(
+        outputs = self.hi_transformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1160,8 +1186,9 @@ class HATModelForDocumentRepresentation(HATPreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.config = config
+        self.max_sentence_length = config.max_sentence_length
 
-        self.hat = HATModel(config)
+        self.hi_transformer = HATModel(config)
         self.pooler = HATPooler(config, pooling=pooling)
 
         # Initialize weights and apply final processing
@@ -1195,7 +1222,7 @@ class HATModelForDocumentRepresentation(HATPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hat(
+        outputs = self.hi_transformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1207,7 +1234,7 @@ class HATModelForDocumentRepresentation(HATPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        pooled_outputs = self.pooler(sequence_output)
+        pooled_outputs = self.pooler(sequence_output[:, ::self.max_sentence_length])
 
         drp_loss = None
         if labels is not None:
@@ -1237,7 +1264,7 @@ class HATModelForMaskedSentenceRepresentation(HATPreTrainedModel):
         self.num_labels = config.num_labels
         self.config = config
 
-        self.hat = HATModel(config)
+        self.hi_transformer = HATModel(config)
         self.sentencizer = HATSentencizer(config)
 
         # Initialize weights and apply final processing
@@ -1271,7 +1298,7 @@ class HATModelForMaskedSentenceRepresentation(HATPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hat(
+        outputs = self.hi_transformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1313,7 +1340,7 @@ class HATModelForBoWPreTraining(HATPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self.hat = HATModel(config)
+        self.hi_transformer = HATModel(config)
         if self.config.mlm or self.config.mslm:
             self.lm_head = HATLMHead(config)
         if self.config.srp or self.config.srp:
@@ -1346,7 +1373,7 @@ class HATModelForBoWPreTraining(HATPreTrainedModel):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hat(
+        outputs = self.hi_transformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1447,7 +1474,7 @@ class HATModelForVICRegPreTraining(HATPreTrainedModel):
 
         self.document_regularization = document_regularization
         self.sentence_regularization = sentence_regularization
-        self.hat = HATModel(config)
+        self.hi_transformer = HATModel(config)
         if self.config.mlm:
             self.lm_head = HATLMHead(config)
         if self.config.sent_sim or self.config.doc_sim:
@@ -1474,7 +1501,7 @@ class HATModelForVICRegPreTraining(HATPreTrainedModel):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        primary_outputs = self.hat(
+        primary_outputs = self.hi_transformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1484,7 +1511,7 @@ class HATModelForVICRegPreTraining(HATPreTrainedModel):
             return_dict=return_dict,
         )
 
-        secondary_outputs = self.hat(
+        secondary_outputs = self.hi_transformer(
             secondary_input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1600,7 +1627,7 @@ class HATModelForSimCLRPreTraining(HATPreTrainedModel):
 
         self.document_regularization = document_regularization
         self.sentence_regularization = sentence_regularization
-        self.hat = HATModel(config)
+        self.hi_transformer = HATModel(config)
         if self.config.mlm:
             self.lm_head = HATLMHead(config)
         if self.config.sent_sim or self.config.doc_sim:
@@ -1626,7 +1653,7 @@ class HATModelForSimCLRPreTraining(HATPreTrainedModel):
     ):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        primary_outputs = self.hat(
+        primary_outputs = self.hi_transformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1636,7 +1663,7 @@ class HATModelForSimCLRPreTraining(HATPreTrainedModel):
             return_dict=return_dict,
         )
 
-        secondary_outputs = self.hat(
+        secondary_outputs = self.hi_transformer(
             secondary_input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1806,15 +1833,14 @@ class HATForSequenceClassification(HATPreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.config = config
+        self.max_sentence_length = config.max_sentence_length
         self.pooling = pooling
 
-        self.hat = HATModel(config)
+        self.hi_transformer = HATModel(config)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
-        if self.pooling != 'cls':
-            self.sentencizer = HATSentencizer(config)
         self.pooler = HATPooler(config, pooling=pooling)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
@@ -1848,7 +1874,7 @@ class HATForSequenceClassification(HATPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hat(
+        outputs = self.hi_transformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -1859,13 +1885,12 @@ class HATForSequenceClassification(HATPreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = outputs[0]
-        if self.pooling not in ['first', 'last']:
-            sentence_outputs = self.sentencizer(sequence_output)
-            pooled_output = self.pooler(sentence_outputs)
-        elif self.pooling == 'first':
+        if self.pooling == 'first':
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, 0, :], 1))
         elif self.pooling == 'last':
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, -128, :], 1))
+        else:
+            pooled_output = self.pooler(sequence_output[:, ::self.max_sentence_length])
 
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
@@ -1916,7 +1941,7 @@ class HATModelForSequentialSentenceClassification(HATPreTrainedModel):
         self.num_labels = config.num_labels
         self.config = config
 
-        self.hat = HATModel(config)
+        self.hi_transformer = HATModel(config)
         self.sentencizer = HATSentencizer(config)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
@@ -1954,7 +1979,7 @@ class HATModelForSequentialSentenceClassification(HATPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hat(
+        outputs = self.hi_transformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -2020,13 +2045,12 @@ class HATForMultipleChoice(HATPreTrainedModel):
         super().__init__(config)
 
         self.pooling = pooling
-        self.hat = HATModel(config)
+        self.max_sentence_length = config.max_sentence_length
+        self.hi_transformer = HATModel(config)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
-        if self.pooling not in ['first', 'last']:
-            self.sentencizer = HATSentencizer(config)
         self.pooler = HATPooler(config, pooling=pooling)
         self.classifier = nn.Linear(config.hidden_size, 1)
 
@@ -2071,7 +2095,7 @@ class HATForMultipleChoice(HATPreTrainedModel):
             else None
         )
 
-        outputs = self.hat(
+        outputs = self.hi_transformer(
             flat_input_ids,
             position_ids=flat_position_ids,
             token_type_ids=flat_token_type_ids,
@@ -2087,7 +2111,7 @@ class HATForMultipleChoice(HATPreTrainedModel):
         elif self.pooling == 'last':
             pooled_output = self.pooler(torch.unsqueeze(sequence_output[:, -128, :], 1))
         else:
-            pooled_output = self.pooler(self.sentencizer(sequence_output))
+            pooled_output = self.pooler(sequence_output[:, ::self.max_sentence_length])
 
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
@@ -2125,7 +2149,7 @@ class HATForTokenClassification(HATPreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
 
-        self.hat = HATModel(config, add_pooling_layer=False)
+        self.hi_transformer = HATModel(config, add_pooling_layer=False)
         classifier_dropout = (
             config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
         )
@@ -2160,7 +2184,7 @@ class HATForTokenClassification(HATPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hat(
+        outputs = self.hi_transformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -2208,7 +2232,7 @@ class HATForQuestionAnswering(HATPreTrainedModel):
         super().__init__(config)
         self.num_labels = config.num_labels
 
-        self.hat = HATModel(config, add_pooling_layer=False)
+        self.hi_transformer = HATModel(config, add_pooling_layer=False)
         self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
 
         # Initialize weights and apply final processing
@@ -2247,7 +2271,7 @@ class HATForQuestionAnswering(HATPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        outputs = self.hat(
+        outputs = self.hi_transformer(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,

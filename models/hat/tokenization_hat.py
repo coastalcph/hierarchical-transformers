@@ -12,7 +12,7 @@
 # limitations under the License.
 """Tokenization classes for HAT."""
 import torch
-from transformers import AutoTokenizer
+from transformers import RobertaTokenizer, BertTokenizer
 from .configuration_hat import HATConfig
 from transformers.utils import logging
 try:
@@ -92,7 +92,11 @@ class HATTokenizer:
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        return cls(tokenizer=AutoTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs))
+        try:
+            tokenizer = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        except:
+            tokenizer = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        return cls(tokenizer=tokenizer)
 
     def save_pretrained(self, *args, **kwargs):
         return self._tokenizer.save_pretrained( *args, **kwargs)

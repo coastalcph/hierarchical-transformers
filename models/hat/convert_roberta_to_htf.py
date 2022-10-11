@@ -62,18 +62,18 @@ def convert_roberta_to_htf():
     htf_model = HATForMaskedLM.from_config(htf_config)
 
     # copy embeddings
-    htf_model.hat.embeddings.position_embeddings.weight.data = roberta_model.roberta.embeddings.position_embeddings.weight[:MAX_SENTENCE_LENGTH+roberta_config.pad_token_id+1]
-    htf_model.hat.embeddings.word_embeddings.load_state_dict(roberta_model.roberta.embeddings.word_embeddings.state_dict())
-    htf_model.hat.embeddings.token_type_embeddings.load_state_dict(roberta_model.roberta.embeddings.token_type_embeddings.state_dict())
-    htf_model.hat.embeddings.LayerNorm.load_state_dict(roberta_model.roberta.embeddings.LayerNorm.state_dict())
+    htf_model.hi_transformer.embeddings.position_embeddings.weight.data = roberta_model.roberta.embeddings.position_embeddings.weight[:MAX_SENTENCE_LENGTH+roberta_config.pad_token_id+1]
+    htf_model.hi_transformer.embeddings.word_embeddings.load_state_dict(roberta_model.roberta.embeddings.word_embeddings.state_dict())
+    htf_model.hi_transformer.embeddings.token_type_embeddings.load_state_dict(roberta_model.roberta.embeddings.token_type_embeddings.state_dict())
+    htf_model.hi_transformer.embeddings.LayerNorm.load_state_dict(roberta_model.roberta.embeddings.LayerNorm.state_dict())
 
     # copy transformer layers
     for idx in range(min(NUM_HIDDEN_LAYERS, roberta_config.num_hidden_layers)):
         if htf_model.config.encoder_layout[str(idx)]['sentence_encoder']:
-            htf_model.hat.encoder.layer[idx].sentence_encoder.load_state_dict(roberta_model.roberta.encoder.layer[idx].state_dict())
+            htf_model.hi_transformer.encoder.layer[idx].sentence_encoder.load_state_dict(roberta_model.roberta.encoder.layer[idx].state_dict())
         if htf_model.config.encoder_layout[str(idx)]['document_encoder']:
-            htf_model.hat.encoder.layer[idx].document_encoder.load_state_dict(roberta_model.roberta.encoder.layer[idx].state_dict())
-            htf_model.hat.encoder.layer[idx].position_embeddings.weight.data = roberta_model.roberta.embeddings.position_embeddings.weight[1:MAX_SENTENCES+2]
+            htf_model.hi_transformer.encoder.layer[idx].document_encoder.load_state_dict(roberta_model.roberta.encoder.layer[idx].state_dict())
+            htf_model.hi_transformer.encoder.layer[idx].position_embeddings.weight.data = roberta_model.roberta.embeddings.position_embeddings.weight[1:MAX_SENTENCES+2]
 
     # copy lm_head
     htf_model.lm_head.load_state_dict(roberta_model.lm_head.state_dict())
