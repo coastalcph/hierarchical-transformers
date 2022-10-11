@@ -223,7 +223,6 @@ def main():
             split="train",
             data_dir=data_args.dataset_name,
             cache_dir=model_args.cache_dir,
-            # use_auth_token='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'
         )
 
     if training_args.do_eval:
@@ -233,7 +232,6 @@ def main():
             split="validation",
             data_dir=data_args.dataset_name,
             cache_dir=model_args.cache_dir,
-            # use_auth_token='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'
         )
 
     if training_args.do_predict:
@@ -243,7 +241,6 @@ def main():
             split="test",
             data_dir=data_args.dataset_name,
             cache_dir=model_args.cache_dir,
-            # use_auth_token='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'
         )
 
     num_labels = train_dataset.features['label'].num_classes
@@ -371,7 +368,6 @@ def main():
             if "allenai/longformer-base-4096" in model_args.model_name_or_path or "google/bigbird-roberta-base" in model_args.model_name_or_path:
                batch['input_ids'][idx][-128] = tokenizer.sep_token_id
             batch['attention_mask'][idx][-128:] = batch_hypothesis['attention_mask'][idx][:128]
-            # batch['token_type_ids'][idx][-128:] = [1] * 128
 
         batch['label'] = examples['label']
 

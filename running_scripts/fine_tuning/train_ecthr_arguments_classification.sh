@@ -7,6 +7,8 @@ MODEL_MAX_LENGTH=4096
 MAX_SENTENCES=32
 
 python evaluation/run_sequential_sentence_classification.py \
+    --dataset_name ../data/ecthr-arguments-dataset \
+    --dataset_config_name ecthr-arguments-dataset \
     --model_name_or_path ${MODEL_NAME} \
     --do_train \
     --do_eval \

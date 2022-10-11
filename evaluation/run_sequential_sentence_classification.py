@@ -97,6 +97,12 @@ class DataTrainingArguments:
             "value if set."
         },
     )
+    dataset_name: Optional[str] = field(
+        default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."}
+    )
+    dataset_config_name: Optional[str] = field(
+        default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
+    )
     task: Optional[str] = field(
         default='ecthr_arguments',
         metadata={
@@ -203,15 +209,31 @@ def main():
     # download the dataset.
     # Downloading and loading eurlex dataset from the hub.
     if training_args.do_train:
-        train_dataset = load_dataset("lexlms/lex_glue_v2", data_args.task, split="train",
-                                     cache_dir=model_args.cache_dir, use_auth_token='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')
+        train_dataset = load_dataset(
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+            split="train",
+            data_dir=data_args.dataset_name,
+            cache_dir=model_args.cache_dir,
+        )
 
     if training_args.do_eval:
-        eval_dataset = load_dataset("lexlms/lex_glue_v2", data_args.task, split="validation",
-                                    cache_dir=model_args.cache_dir, use_auth_token='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')
+        eval_dataset = load_dataset(
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+            split="validation",
+            data_dir=data_args.dataset_name,
+            cache_dir=model_args.cache_dir,
+        )
+
     if training_args.do_predict:
-        predict_dataset = load_dataset("lexlms/lex_glue_v2", data_args.task, split="test",
-                                       cache_dir=model_args.cache_dir, use_auth_token='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')
+        predict_dataset = load_dataset(
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+            split="test",
+            data_dir=data_args.dataset_name,
+            cache_dir=model_args.cache_dir,
+        )
     # Labels
     label_list = list(range(train_dataset.features['labels'].feature.feature.num_classes))
     label_names = train_dataset.features['labels'].feature.feature.names
@@ -454,18 +476,6 @@ def main():
                             writer.write(f"{index}\t{pred_line}\n")
                     except:
                         pass
-
-            # Discretize predictions
-            from multi_label_utils import fix_multi_label_scores
-            y_true, y_pred = fix_multi_label_scores(predictions, labels,
-                                                    unpad_sequences=True, flatten_sequences=True)
-            with open(report_predict_file, "w") as writer:
-                writer.write(classification_report(y_true=y_true, y_pred=y_pred,
-                                                   target_names=label_names + ['None'],
-                                                   zero_division=0))
-            logger.info(classification_report(y_true=y_true, y_pred=y_pred,
-                                                   target_names=label_names + ['None'],
-                                                   zero_division=0)+'\n')
 
     # Clean up checkpoints
     checkpoints = [filepath for filepath in glob.glob(f'{training_args.output_dir}/*/') if '/checkpoint' in filepath]
