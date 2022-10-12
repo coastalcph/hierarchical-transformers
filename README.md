@@ -7,9 +7,11 @@ Implementation of Hierarchical Attention Transformers (HATs) presented in _"An E
 
 ## Citation
 
+If you use HAT in your research, please cite [An Exploration of Hierarchical Attention Transformers for Efficient Long Document Classification](https://arxiv.org/abs/2210.05529). Ilias Chalkidis, Xiang Dai, Manos Fergadiotis, Prodromos Malakasiotis, and Desmond Elliott. 2022. arXiv:2210.05529 (Preprint).
+
 ```
 @misc{chalkidis-etal-2022-hat,
-  url = {https://arxiv.org/abs/xxx},
+  url = {https://arxiv.org/abs/2210.05529},
   author = {Chalkidis, Ilias and Dai, Xiang and Fergadiotis, Manos and Malakasiotis, Prodromos and Elliott, Desmond},
   title = {An Exploration of Hierarchical Attention Transformers for Efficient Long Document Classification},
   publisher = {arXiv},
@@ -87,15 +89,15 @@ e.g., a 6-layer model has 12 effective transformer blocks (Layout: SD/SD/SD/SD/S
 In thi study, we examine the efficacy of 8 alternative layouts:
 
 ```json
-LAYOUTS = {
-    'I1': 'SD|SD|SD|SD|SD|SD',
-    'I2': 'S|SD|D|S|SD|D|S|SD|D',
-    'I3': 'S|SD|S|SD|S|SD|S|SD',
-    'LC1': 'S|S|S|S|S|S|SD|SD|SD',
-    'LC2': 'S|S|S|S|S|SD|D|S|SD|D',
-    'EC1': 'S|S|SD|D|S|SD|D|S|S|S',
-    'EC2': 'S|S|SD|SD|SD|S|S|S|S',
-    'AH':  'S|S|S|S|S|S|S|S|S|S|S|S',
+{
+'I1': 'SD|SD|SD|SD|SD|SD',
+'I2': 'S|SD|D|S|SD|D|S|SD|D',
+'I3': 'S|SD|S|SD|S|SD|S|SD',
+'LC1': 'S|S|S|S|S|S|SD|SD|SD',
+'LC2': 'S|S|S|S|S|SD|D|S|SD|D',
+'EC1': 'S|S|SD|D|S|SD|D|S|S|S',
+'EC2': 'S|S|SD|SD|SD|S|S|S|S',
+'AH':  'S|S|S|S|S|S|S|S|S|S|S|S',
 }
 
 ```
