@@ -7,7 +7,9 @@ Implementation of Hierarchical Attention Transformers (HATs) presented in _"An E
 
 ## Citation
 
-If you use HAT in your research, please cite [An Exploration of Hierarchical Attention Transformers for Efficient Long Document Classification](https://arxiv.org/abs/2210.05529). Ilias Chalkidis, Xiang Dai, Manos Fergadiotis, Prodromos Malakasiotis, and Desmond Elliott. 2022. arXiv:2210.05529 (Preprint).
+If you use HAT in your research, please cite:
+
+[An Exploration of Hierarchical Attention Transformers for Efficient Long Document Classification](https://arxiv.org/abs/2210.05529). Ilias Chalkidis, Xiang Dai, Manos Fergadiotis, Prodromos Malakasiotis, and Desmond Elliott. 2022. arXiv:2210.05529 (Preprint).
 
 ```
 @misc{chalkidis-etal-2022-hat,
