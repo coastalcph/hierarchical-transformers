@@ -246,3 +246,26 @@ class HATTokenizer:
                               flat_input[:chunk_size-1],
                               torch.tensor([self.pad_token_id] * max(0, chunk_size - len(flat_input) - 1), dtype=torch.int)
                               ))
+        
+    @classmethod
+    def register_for_auto_class(cls, auto_class="AutoModel"):
+        """
+        Register this class with a given auto class. This should only be used for custom models as the ones in the
+        library are already mapped with an auto class.
+        <Tip warning={true}>
+        This API is experimental and may have some slight breaking changes in the next releases.
+        </Tip>
+        Args:
+            auto_class (`str` or `type`, *optional*, defaults to `"TFAutoModel"`):
+                The auto class to register this new model with.
+        """
+        if not isinstance(auto_class, str):
+            auto_class = auto_class.__name__
+
+        import transformers.models.auto as auto_module
+
+        if not hasattr(auto_module, auto_class):
+            raise ValueError(f"{auto_class} is not a valid auto class.")
+
+        cls._auto_class = auto_class
+
