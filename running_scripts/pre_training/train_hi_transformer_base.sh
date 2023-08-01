@@ -9,7 +9,7 @@ MAX_SENTENCES=32
 python3 models/hat/convert_roberta_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
 
 python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm_stream.py \
-    --model_name_or_path data/PLMs/hi-transformer-${LAYOUT}-roberta \
+    --model_name_or_path data/PLMs/hat-${LAYOUT}-roberta \
     --dataset_name c4 \
     --dataset_config_name en \
     --do_train \

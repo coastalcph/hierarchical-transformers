@@ -11,8 +11,8 @@ python3 models/hat/convert_bert_to_htf.py --layout ${LAYOUT} --max_sentences ${M
 
 python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm_stream.py \
     --model_name_or_path data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY} \
-    --dataset_name ./data/wikipedia-dataset \
-    --dataset_config_name 20200501.en \
+    --dataset_name c4 \
+    --dataset_config_name en \
     --do_train \
     --do_eval \
     --output_dir data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY}-mlm \

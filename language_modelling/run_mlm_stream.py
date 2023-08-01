@@ -352,9 +352,9 @@ def main():
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
     }
-    if model_args.config_name and 'hi-transformer' in model_args.config_name:
+    if model_args.config_name and 'hat' in model_args.config_name:
         config = HATConfig.from_pretrained(model_args.config_name, **config_kwargs)
-    elif model_args.model_name_or_path and 'hi-transformer' in model_args.model_name_or_path:
+    elif model_args.model_name_or_path and 'hat' in model_args.model_name_or_path:
         config = HATConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
     elif model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
@@ -379,6 +379,7 @@ def main():
         "use_fast": model_args.use_fast_tokenizer,
         "revision": model_args.model_revision,
         "use_auth_token": True if model_args.use_auth_token else None,
+        "model_max_length": data_args.max_seq_length,
     }
     if config.model_type == 'hi-transformer':
         if model_args.tokenizer_name:
@@ -400,7 +401,7 @@ def main():
         )
 
     if model_args.model_name_or_path:
-        if config.model_type == 'hi-transformer':
+        if config.model_type == 'hierarchical-transformer':
             model = HATForMaskedLM.from_pretrained(
                 model_args.model_name_or_path,
                 from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -458,7 +459,7 @@ def main():
         if data_args.max_seq_length > tokenizer.model_max_length:
             logger.warning(
                 f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
-                f"model ({tokenizer.model_max_length}). Using max_seq_length={tokenizer.model_max_length}."
+                f" model ({tokenizer.model_max_length}). Using max_seq_length={tokenizer.model_max_length}."
             )
         max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
 
