@@ -1,4 +1,4 @@
-export WANDB_PROJECT="hi-transformers"
+export WANDB_PROJECT="HATs-pretrain"
 export PYTHONPATH=.
 
 MODEL_MAX_LENGTH=4096

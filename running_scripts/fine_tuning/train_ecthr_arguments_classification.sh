@@ -1,4 +1,4 @@
-export WANDB_PROJECT="hi-transformers-eval"
+export WANDB_PROJECT="HATs-eval"
 export PYTHONPATH=.
 export CUDA_VISIBLE_DEVICES=1,2,3,4
 

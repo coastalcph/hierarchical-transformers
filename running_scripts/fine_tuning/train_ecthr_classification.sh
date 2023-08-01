@@ -1,4 +1,4 @@
-export WANDB_PROJECT="hi-transformers-eval"
+export WANDB_PROJECT="HATs-eval"
 export PYTHONPATH=.
 
 MODEL_NAME='allenai/longformer-base-4096'

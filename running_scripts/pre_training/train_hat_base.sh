@@ -1,21 +1,20 @@
-export WANDB_PROJECT="hi-transformers"
+export WANDB_PROJECT="HATs-pretrain"
 export XRT_TPU_CONFIG="localservice;0;localhost:51011"
 export PYTHONPATH=.
 
-LAYOUT='s1'
-MODEL_WARMUP_STRATEGY='grouped'
-MODEL_MAX_LENGTH=1024
-MAX_SENTENCES=8
+LAYOUT='p1'
+MODEL_MAX_LENGTH=4096
+MAX_SENTENCES=32
 
-python3 models/hat/convert_bert_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
+python3 models/hat/convert_roberta_to_htf.py --layout ${LAYOUT} --max_sentences ${MAX_SENTENCES}
 
 python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm_stream.py \
-    --model_name_or_path data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY} \
+    --model_name_or_path data/PLMs/hat-${LAYOUT}-roberta \
     --dataset_name c4 \
     --dataset_config_name en \
     --do_train \
     --do_eval \
-    --output_dir data/PLMs/hi-transformer-${LAYOUT}-${MODEL_WARMUP_STRATEGY}-mlm \
+    --output_dir data/PLMs/hi-transformer-${LAYOUT}-roberta-mlm \
     --overwrite_output_dir \
     --logging_steps 500 \
     --evaluation_strategy steps \
@@ -34,5 +33,7 @@ python3 language_modelling/xla_spawn.py --num_cores=8 language_modelling/run_mlm
     --weight_decay 0.01 \
     --mlm_probability 0.15 \
     --max_seq_length ${MODEL_MAX_LENGTH} \
-    --line_by_line \
-    --pad_to_max_length
+    --max_sentences ${MAX_SENTENCES} \
+    --min_sequence_length 1024 \
+    --pad_to_max_length \
+    --max_eval_samples 100000

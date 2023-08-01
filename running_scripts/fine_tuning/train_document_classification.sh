@@ -1,7 +1,7 @@
-export WANDB_PROJECT="hi-transformers-eval"
+export WANDB_PROJECT="HATs-eval"
 export PYTHONPATH=.
 
-MODEL_NAME='hi-transformer-s1-grouped-mlm'
+MODEL_NAME='hat-s1-grouped-mlm'
 POOLING_METHOD='max'
 MODEL_MAX_LENGTH=1024
 MAX_SENTENCES=8

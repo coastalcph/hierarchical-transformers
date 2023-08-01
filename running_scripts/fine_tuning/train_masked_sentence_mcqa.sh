@@ -1,7 +1,7 @@
-export WANDB_PROJECT="hi-transformers-eval"
+export WANDB_PROJECT="HATs-eval"
 export PYTHONPATH=.
 
-MODEL_NAME='hi-transformer-p1-roberta-mlm'
+MODEL_NAME='hat-p1-roberta-mlm'
 MODEL_MAX_LENGTH=4096
 MAX_SENTENCES=32
 
