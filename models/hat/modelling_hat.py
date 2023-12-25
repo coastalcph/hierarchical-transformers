@@ -572,7 +572,8 @@ class HATLayer(nn.Module):
 
             sentence_positions = torch.arange(1, num_sentences+1).repeat(outputs.size(0), 1).to(outputs.device) \
                                  * (sentence_attention_mask.reshape(-1, num_sentences) >= -100).int().to(outputs.device)
-            outputs[:, ::self.max_sentence_length] += self.position_embeddings(sentence_positions)
+            # outputs[:, ::self.max_sentence_length] += self.position_embeddings(sentence_positions)
+            sentence_global_tokens += self.position_embeddings(sentence_positions)
 
             document_outputs = self.document_encoder(sentence_global_tokens,
                                                      sentence_attention_mask,
