@@ -157,7 +157,7 @@ class HATTokenizer:
                 if isinstance(key_inputs_list[0], list):
                     key_inputs_list = [token for sentence in key_inputs_list for token in sentence]
                 else:
-                    key_inputs_list = torch.stack(key_inputs_list)
+                    key_inputs_list = torch.stack([token for sentence in key_inputs_list for token in sentence])
                 if input_key in batch:
                     batch[input_key].append(key_inputs_list)
                 else:
